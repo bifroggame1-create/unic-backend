@@ -283,7 +283,7 @@ export async function eventRoutes(fastify: FastifyInstance) {
     return { position }
   })
 
-  // Complete event manually
+  // Complete event manually (admin action)
   fastify.post('/events/:id/complete', async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
     const telegramId = request.headers['x-telegram-id']
     if (!telegramId) {
@@ -303,10 +303,17 @@ export async function eventRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: 'Event is not active' })
     }
 
-    await finalizeEvent(event._id)
+    try {
+      // Import SchedulerService dynamically to avoid circular deps
+      const { SchedulerService } = await import('../services/scheduler')
+      await SchedulerService.completeEventManually(event._id.toString())
 
-    const updatedEvent = await Event.findById(event._id).lean()
+      const updatedEvent = await Event.findById(event._id).lean()
 
-    return { event: updatedEvent }
+      return { event: updatedEvent, message: 'Event completed and gifts sent' }
+    } catch (error: any) {
+      console.error('Error completing event:', error)
+      return reply.status(500).send({ error: error.message || 'Failed to complete event' })
+    }
   })
 }

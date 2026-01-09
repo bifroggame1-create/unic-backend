@@ -11,6 +11,7 @@ dotenv.config({ path: path.join(__dirname, '../.env') })
 import { connectDB } from './database'
 import { registerRoutes } from './routes'
 import { initBot, handleWebhook, handleChannelReaction, handleChannelComment } from './services/telegram'
+import { SchedulerService } from './services/scheduler'
 
 const PORT = parseInt(process.env.PORT || '3001', 10)
 const HOST = process.env.HOST || '0.0.0.0'
@@ -143,6 +144,9 @@ async function start() {
       console.log('⚠️ BOT_TOKEN not set, bot disabled')
     }
 
+    // Start event scheduler
+    SchedulerService.start()
+
     // Start server
     await fastify.listen({ port: PORT, host: HOST })
     console.log(`🚀 Server running at http://${HOST}:${PORT}`)
@@ -151,6 +155,7 @@ async function start() {
     // Graceful shutdown
     const shutdown = async (signal: string) => {
       console.log(`\n${signal} received, shutting down...`)
+      SchedulerService.stop()
       await fastify.close()
       process.exit(0)
     }
