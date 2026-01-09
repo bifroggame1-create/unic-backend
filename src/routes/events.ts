@@ -1,9 +1,8 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
-import { Event, Channel, User, Participation } from '../models'
-import { getLeaderboard, getUserPosition, getParticipantsCount, finalizeEvent } from '../services/scoring'
-import { verifyChannelAdmin, verifyBotAdmin, getChannelInfo, sendEventPost } from '../services/telegram'
+import { Event, User } from '../models'
+import { verifyChannelAdmin, verifyBotAdmin, sendEventPost } from '../services/telegram'
 import { PaymentService } from '../services/payment'
-import { validateEventId, isValidTelegramId, isValidDuration, isValidActivityType, isValidWinnersCount, validatePagination, sanitizeString, isValidObjectId } from '../utils/validation'
+import { validateEventId, isValidTelegramId, isValidDuration, isValidActivityType, isValidWinnersCount, sanitizeString, isValidObjectId } from '../utils/validation'
 
 interface CreateEventBody {
   channelId: number
@@ -40,31 +39,6 @@ export async function eventRoutes(fastify: FastifyInstance) {
       .lean()
 
     return { events }
-  })
-
-  // Get single event
-  fastify.get('/events/:id', async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
-    const { id } = request.params
-
-    // Validate event ID
-    const validation = validateEventId(id)
-    if (!validation.valid) {
-      return reply.status(400).send({ error: validation.error })
-    }
-
-    const event = await Event.findById(id).lean()
-    if (!event) {
-      return reply.status(404).send({ error: 'Event not found' })
-    }
-
-    const participantsCount = await getParticipantsCount(event._id)
-
-    return {
-      event: {
-        ...event,
-        participantsCount,
-      },
-    }
   })
 
   // Create event
@@ -304,78 +278,6 @@ export async function eventRoutes(fastify: FastifyInstance) {
     await event.save()
 
     return { event }
-  })
-
-  // Get event leaderboard
-  fastify.get('/events/:id/leaderboard', async (
-    request: FastifyRequest<{
-      Params: { id: string }
-      Querystring: { limit?: string; offset?: string }
-    }>,
-    reply: FastifyReply
-  ) => {
-    const { id } = request.params
-
-    // Validate event ID
-    const validation = validateEventId(id)
-    if (!validation.valid) {
-      return reply.status(400).send({ error: validation.error })
-    }
-
-    // Validate and sanitize pagination
-    const { limit, offset } = validatePagination(request.query.limit, request.query.offset)
-
-    const event = await Event.findById(id).lean()
-    if (!event) {
-      return reply.status(404).send({ error: 'Event not found' })
-    }
-
-    const leaderboard = await getLeaderboard(id, limit, offset)
-    const totalParticipants = await getParticipantsCount(id)
-
-    return {
-      event: {
-        _id: event._id,
-        channelId: event.channelId,
-        status: event.status,
-        winnersCount: event.winnersCount,
-        startsAt: event.startsAt,
-        endsAt: event.endsAt,
-        totalReactions: event.totalReactions,
-        totalComments: event.totalComments,
-      },
-      leaderboard,
-      totalParticipants,
-    }
-  })
-
-  // Get user's position in event
-  fastify.get('/events/:id/position', async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
-    const telegramId = request.headers['x-telegram-id']
-    if (!telegramId) {
-      return reply.status(401).send({ error: 'Unauthorized' })
-    }
-
-    // Validate Telegram ID
-    const userId = Number(telegramId)
-    if (!isValidTelegramId(userId)) {
-      return reply.status(401).send({ error: 'Invalid Telegram ID' })
-    }
-
-    const { id } = request.params
-
-    // Validate event ID
-    const validation = validateEventId(id)
-    if (!validation.valid) {
-      return reply.status(400).send({ error: validation.error })
-    }
-
-    const position = await getUserPosition(id, userId)
-    if (!position) {
-      return { position: null, message: 'Not participating yet' }
-    }
-
-    return { position }
   })
 
   // Complete event manually (admin action)
