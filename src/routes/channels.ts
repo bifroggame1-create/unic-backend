@@ -1,6 +1,7 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
 import { Channel } from '../models'
 import { verifyChannelAdmin, verifyBotAdmin, getChannelInfo } from '../services/telegram'
+import { isValidTelegramId, isValidObjectId, sanitizeString } from '../utils/validation'
 
 interface AddChannelBody {
   channelId?: number
@@ -15,7 +16,13 @@ export async function channelRoutes(fastify: FastifyInstance) {
       return reply.status(401).send({ error: 'Unauthorized' })
     }
 
-    const channels = await Channel.find({ ownerId: Number(telegramId) })
+    // Validate Telegram ID
+    const userId = Number(telegramId)
+    if (!isValidTelegramId(userId)) {
+      return reply.status(401).send({ error: 'Invalid Telegram ID' })
+    }
+
+    const channels = await Channel.find({ ownerId: userId })
       .sort({ addedAt: -1 })
       .lean()
 
@@ -29,10 +36,29 @@ export async function channelRoutes(fastify: FastifyInstance) {
       return reply.status(401).send({ error: 'Unauthorized' })
     }
 
+    // Validate Telegram ID
+    const userId = Number(telegramId)
+    if (!isValidTelegramId(userId)) {
+      return reply.status(401).send({ error: 'Invalid Telegram ID' })
+    }
+
     const { channelId, username } = request.body
 
+    // Validate input - must have either channelId or username
+    if (!channelId && !username) {
+      return reply.status(400).send({ error: 'Either channelId or username is required' })
+    }
+
+    // Validate channel ID if provided
+    if (channelId && !isValidTelegramId(channelId)) {
+      return reply.status(400).send({ error: 'Invalid channelId' })
+    }
+
+    // Sanitize username if provided
+    const sanitizedUsername = username ? sanitizeString(username.replace('@', '')) : undefined
+
     // Get channel info
-    const channelIdentifier = channelId || `@${username?.replace('@', '')}`
+    const channelIdentifier = channelId || `@${sanitizedUsername}`
     const info = await getChannelInfo(channelIdentifier)
 
     if (!info) {
@@ -40,7 +66,7 @@ export async function channelRoutes(fastify: FastifyInstance) {
     }
 
     // Verify user is channel admin
-    const isAdmin = await verifyChannelAdmin(info.id, Number(telegramId))
+    const isAdmin = await verifyChannelAdmin(info.id, userId)
     if (!isAdmin) {
       return reply.status(403).send({ error: 'You must be an admin of this channel' })
     }
@@ -58,7 +84,7 @@ export async function channelRoutes(fastify: FastifyInstance) {
         $set: {
           username: info.username,
           title: info.title,
-          ownerId: Number(telegramId),
+          ownerId: userId,
           isVerified: true,
           subscribersCount: info.subscribersCount,
         },
@@ -76,16 +102,29 @@ export async function channelRoutes(fastify: FastifyInstance) {
       return reply.status(401).send({ error: 'Unauthorized' })
     }
 
-    const channel = await Channel.findById(request.params.id)
+    // Validate Telegram ID
+    const userId = Number(telegramId)
+    if (!isValidTelegramId(userId)) {
+      return reply.status(401).send({ error: 'Invalid Telegram ID' })
+    }
+
+    const { id } = request.params
+
+    // Validate channel ID
+    if (!isValidObjectId(id)) {
+      return reply.status(400).send({ error: 'Invalid channel ID format' })
+    }
+
+    const channel = await Channel.findById(id)
     if (!channel) {
       return reply.status(404).send({ error: 'Channel not found' })
     }
 
-    if (channel.ownerId !== Number(telegramId)) {
+    if (channel.ownerId !== userId) {
       return reply.status(403).send({ error: 'Not your channel' })
     }
 
-    await Channel.findByIdAndDelete(request.params.id)
+    await Channel.findByIdAndDelete(id)
 
     return { success: true }
   })
@@ -97,12 +136,25 @@ export async function channelRoutes(fastify: FastifyInstance) {
       return reply.status(401).send({ error: 'Unauthorized' })
     }
 
-    const channel = await Channel.findById(request.params.id)
+    // Validate Telegram ID
+    const userId = Number(telegramId)
+    if (!isValidTelegramId(userId)) {
+      return reply.status(401).send({ error: 'Invalid Telegram ID' })
+    }
+
+    const { id } = request.params
+
+    // Validate channel ID
+    if (!isValidObjectId(id)) {
+      return reply.status(400).send({ error: 'Invalid channel ID format' })
+    }
+
+    const channel = await Channel.findById(id)
     if (!channel) {
       return reply.status(404).send({ error: 'Channel not found' })
     }
 
-    if (channel.ownerId !== Number(telegramId)) {
+    if (channel.ownerId !== userId) {
       return reply.status(403).send({ error: 'Not your channel' })
     }
 

@@ -30,7 +30,14 @@ export class GiftsService {
   static async getAvailableGifts(): Promise<GiftOption[]> {
     try {
       // Get gifts from Telegram API
-      const gifts = await bot.api.getAvailableGifts()
+      const response = await bot.api.getAvailableGifts()
+
+      // The response is a Gifts object with a 'gifts' array
+      const gifts = (response as any).gifts || []
+
+      if (!Array.isArray(gifts)) {
+        throw new Error('Invalid gifts response format')
+      }
 
       return gifts.map((gift: TelegramGift) => ({
         id: gift.id,

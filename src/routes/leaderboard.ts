@@ -3,12 +3,19 @@ import { Event, UserEventStats, User } from '../models'
 import { PointsService } from '../services/points'
 import { PaymentService } from '../services/payment'
 import { Types } from 'mongoose'
+import { validateEventId, validateUserId, isValidTelegramId, isValidBoostType, validatePagination, isValidObjectId } from '../utils/validation'
 
 export async function leaderboardRoutes(fastify: FastifyInstance) {
   // Get event details for user view
   fastify.get('/events/:id', async (request, reply) => {
     const { id } = request.params as { id: string }
     const { userId } = request.query as { userId?: string }
+
+    // Validate event ID
+    const validation = validateEventId(id)
+    if (!validation.valid) {
+      return reply.status(400).send({ error: validation.error })
+    }
 
     try {
       const event = await Event.findById(id)
@@ -89,6 +96,15 @@ export async function leaderboardRoutes(fastify: FastifyInstance) {
       offset?: string
     }
 
+    // Validate event ID
+    const validation = validateEventId(id)
+    if (!validation.valid) {
+      return reply.status(400).send({ error: validation.error })
+    }
+
+    // Validate and sanitize pagination
+    const { limit: validLimit, offset: validOffset } = validatePagination(limit, offset)
+
     try {
       const event = await Event.findById(id)
 
@@ -98,8 +114,8 @@ export async function leaderboardRoutes(fastify: FastifyInstance) {
 
       const leaderboard = await PointsService.calculateLeaderboard(
         id,
-        parseInt(limit),
-        parseInt(offset)
+        validLimit,
+        validOffset
       )
 
       // Enrich with user data
@@ -130,9 +146,9 @@ export async function leaderboardRoutes(fastify: FastifyInstance) {
         leaderboard: enriched,
         pagination: {
           total: totalParticipants,
-          limit: parseInt(limit),
-          offset: parseInt(offset),
-          hasMore: parseInt(offset) + enriched.length < totalParticipants,
+          limit: validLimit,
+          offset: validOffset,
+          hasMore: validOffset + enriched.length < totalParticipants,
         },
       })
     } catch (error) {
@@ -146,8 +162,16 @@ export async function leaderboardRoutes(fastify: FastifyInstance) {
     const { id } = request.params as { id: string }
     const { userId } = request.query as { userId: string }
 
-    if (!userId) {
-      return reply.status(400).send({ error: 'userId is required' })
+    // Validate event ID
+    const validation = validateEventId(id)
+    if (!validation.valid) {
+      return reply.status(400).send({ error: validation.error })
+    }
+
+    // Validate user ID
+    const validUserId = validateUserId(userId)
+    if (!validUserId) {
+      return reply.status(400).send({ error: 'Invalid userId format' })
     }
 
     try {
@@ -158,7 +182,7 @@ export async function leaderboardRoutes(fastify: FastifyInstance) {
       }
 
       const position = await PointsService.getUserPosition(
-        parseInt(userId),
+        validUserId,
         id
       )
 
@@ -171,7 +195,7 @@ export async function leaderboardRoutes(fastify: FastifyInstance) {
 
       // Get detailed user stats
       const stats = await UserEventStats.findOne({
-        userId: parseInt(userId),
+        userId: validUserId,
         eventId: new Types.ObjectId(id),
       })
 
@@ -209,13 +233,19 @@ export async function leaderboardRoutes(fastify: FastifyInstance) {
       boostType: 'x2_24h' | 'x1.5_forever'
     }
 
-    if (!userId || !boostType) {
-      return reply.status(400).send({
-        error: 'userId and boostType are required',
-      })
+    // Validate event ID
+    const validation = validateEventId(id)
+    if (!validation.valid) {
+      return reply.status(400).send({ error: validation.error })
     }
 
-    if (!['x2_24h', 'x1.5_forever'].includes(boostType)) {
+    // Validate user ID
+    if (!userId || !isValidTelegramId(userId)) {
+      return reply.status(400).send({ error: 'Invalid userId' })
+    }
+
+    // Validate boost type
+    if (!boostType || !isValidBoostType(boostType)) {
       return reply.status(400).send({
         error: 'boostType must be x2_24h or x1.5_forever',
       })
@@ -267,10 +297,20 @@ export async function leaderboardRoutes(fastify: FastifyInstance) {
       paymentId: string
     }
 
-    if (!userId || !paymentId) {
-      return reply.status(400).send({
-        error: 'userId and paymentId are required',
-      })
+    // Validate event ID
+    const validation = validateEventId(id)
+    if (!validation.valid) {
+      return reply.status(400).send({ error: validation.error })
+    }
+
+    // Validate user ID
+    if (!userId || !isValidTelegramId(userId)) {
+      return reply.status(400).send({ error: 'Invalid userId' })
+    }
+
+    // Validate payment ID
+    if (!paymentId || !isValidObjectId(paymentId)) {
+      return reply.status(400).send({ error: 'Invalid paymentId' })
     }
 
     try {
@@ -330,8 +370,16 @@ export async function leaderboardRoutes(fastify: FastifyInstance) {
     const { id } = request.params as { id: string }
     const { userId } = request.query as { userId: string }
 
-    if (!userId) {
-      return reply.status(400).send({ error: 'userId is required' })
+    // Validate event ID
+    const validation = validateEventId(id)
+    if (!validation.valid) {
+      return reply.status(400).send({ error: validation.error })
+    }
+
+    // Validate user ID
+    const validUserId = validateUserId(userId)
+    if (!validUserId) {
+      return reply.status(400).send({ error: 'Invalid userId format' })
     }
 
     try {
@@ -342,7 +390,7 @@ export async function leaderboardRoutes(fastify: FastifyInstance) {
       }
 
       const stats = await UserEventStats.findOne({
-        userId: parseInt(userId),
+        userId: validUserId,
         eventId: new Types.ObjectId(id),
       })
 

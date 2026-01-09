@@ -3,6 +3,7 @@ import { Event, Channel, User, Participation } from '../models'
 import { getLeaderboard, getUserPosition, getParticipantsCount, finalizeEvent } from '../services/scoring'
 import { verifyChannelAdmin, verifyBotAdmin, getChannelInfo, sendEventPost } from '../services/telegram'
 import { PaymentService } from '../services/payment'
+import { validateEventId, isValidTelegramId, isValidDuration, isValidActivityType, isValidWinnersCount, validatePagination, sanitizeString, isValidObjectId } from '../utils/validation'
 
 interface CreateEventBody {
   channelId: number
@@ -28,7 +29,13 @@ export async function eventRoutes(fastify: FastifyInstance) {
       return reply.status(401).send({ error: 'Unauthorized' })
     }
 
-    const events = await Event.find({ ownerId: Number(telegramId) })
+    // Validate Telegram ID
+    const userId = Number(telegramId)
+    if (!isValidTelegramId(userId)) {
+      return reply.status(401).send({ error: 'Invalid Telegram ID' })
+    }
+
+    const events = await Event.find({ ownerId: userId })
       .sort({ createdAt: -1 })
       .lean()
 
@@ -37,7 +44,15 @@ export async function eventRoutes(fastify: FastifyInstance) {
 
   // Get single event
   fastify.get('/events/:id', async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
-    const event = await Event.findById(request.params.id).lean()
+    const { id } = request.params
+
+    // Validate event ID
+    const validation = validateEventId(id)
+    if (!validation.valid) {
+      return reply.status(400).send({ error: validation.error })
+    }
+
+    const event = await Event.findById(id).lean()
     if (!event) {
       return reply.status(404).send({ error: 'Event not found' })
     }
@@ -59,10 +74,36 @@ export async function eventRoutes(fastify: FastifyInstance) {
       return reply.status(401).send({ error: 'Unauthorized' })
     }
 
+    // Validate Telegram ID
+    const userId = Number(telegramId)
+    if (!isValidTelegramId(userId)) {
+      return reply.status(401).send({ error: 'Invalid Telegram ID' })
+    }
+
     const { channelId, duration, activityType, winnersCount, prizes, packageId, title, boostsEnabled } = request.body
 
+    // Validate required fields
+    if (!channelId || !isValidTelegramId(channelId)) {
+      return reply.status(400).send({ error: 'Invalid channelId' })
+    }
+
+    if (!duration || !isValidDuration(duration)) {
+      return reply.status(400).send({ error: 'Invalid duration. Must be 24h, 48h, 72h, or 7d' })
+    }
+
+    if (!activityType || !isValidActivityType(activityType)) {
+      return reply.status(400).send({ error: 'Invalid activityType. Must be reactions, comments, or all' })
+    }
+
+    if (!winnersCount || !isValidWinnersCount(winnersCount)) {
+      return reply.status(400).send({ error: 'Invalid winnersCount. Must be between 1 and 100' })
+    }
+
+    // Sanitize optional title
+    const sanitizedTitle = title ? sanitizeString(title) : undefined
+
     // Verify user is channel admin
-    const isAdmin = await verifyChannelAdmin(channelId, Number(telegramId))
+    const isAdmin = await verifyChannelAdmin(channelId, userId)
     if (!isAdmin) {
       return reply.status(403).send({ error: 'You must be an admin of this channel' })
     }
@@ -74,7 +115,7 @@ export async function eventRoutes(fastify: FastifyInstance) {
     }
 
     // Check user's plan limits
-    const user = await User.findOne({ telegramId: Number(telegramId) })
+    const user = await User.findOne({ telegramId: userId })
     if (!user) {
       return reply.status(404).send({ error: 'User not found' })
     }
@@ -95,8 +136,8 @@ export async function eventRoutes(fastify: FastifyInstance) {
     // Create event
     const event = new Event({
       channelId,
-      ownerId: Number(telegramId),
-      title,
+      ownerId: userId,
+      title: sanitizedTitle,
       duration,
       activityType,
       winnersCount,
@@ -123,12 +164,26 @@ export async function eventRoutes(fastify: FastifyInstance) {
       return reply.status(401).send({ error: 'Unauthorized' })
     }
 
-    const event = await Event.findById(request.params.id)
+    // Validate Telegram ID
+    const userId = Number(telegramId)
+    if (!isValidTelegramId(userId)) {
+      return reply.status(401).send({ error: 'Invalid Telegram ID' })
+    }
+
+    const { id } = request.params
+
+    // Validate event ID
+    const validation = validateEventId(id)
+    if (!validation.valid) {
+      return reply.status(400).send({ error: validation.error })
+    }
+
+    const event = await Event.findById(id)
     if (!event) {
       return reply.status(404).send({ error: 'Event not found' })
     }
 
-    if (event.ownerId !== Number(telegramId)) {
+    if (event.ownerId !== userId) {
       return reply.status(403).send({ error: 'Not your event' })
     }
 
@@ -150,7 +205,7 @@ export async function eventRoutes(fastify: FastifyInstance) {
 
     try {
       const { invoiceLink, paymentId } = await PaymentService.createEventPackageInvoice(
-        Number(telegramId),
+        userId,
         event._id,
         event.packageId || 'starter',
         pkg.amount
@@ -180,12 +235,26 @@ export async function eventRoutes(fastify: FastifyInstance) {
       return reply.status(401).send({ error: 'Unauthorized' })
     }
 
-    const event = await Event.findById(request.params.id)
+    // Validate Telegram ID
+    const userId = Number(telegramId)
+    if (!isValidTelegramId(userId)) {
+      return reply.status(401).send({ error: 'Invalid Telegram ID' })
+    }
+
+    const { id } = request.params
+
+    // Validate event ID
+    const validation = validateEventId(id)
+    if (!validation.valid) {
+      return reply.status(400).send({ error: validation.error })
+    }
+
+    const event = await Event.findById(id)
     if (!event) {
       return reply.status(404).send({ error: 'Event not found' })
     }
 
-    if (event.ownerId !== Number(telegramId)) {
+    if (event.ownerId !== userId) {
       return reply.status(403).send({ error: 'Not your event' })
     }
 
@@ -193,6 +262,11 @@ export async function eventRoutes(fastify: FastifyInstance) {
     if (event.packageId && event.packageId !== 'free') {
       if (!event.paymentId) {
         return reply.status(400).send({ error: 'Payment not initiated' })
+      }
+
+      // Validate payment ID format
+      if (!isValidObjectId(event.paymentId)) {
+        return reply.status(400).send({ error: 'Invalid payment ID' })
       }
 
       const payment = await PaymentService.getPayment(event.paymentId)
@@ -241,8 +315,15 @@ export async function eventRoutes(fastify: FastifyInstance) {
     reply: FastifyReply
   ) => {
     const { id } = request.params
-    const limit = parseInt(request.query.limit || '50')
-    const offset = parseInt(request.query.offset || '0')
+
+    // Validate event ID
+    const validation = validateEventId(id)
+    if (!validation.valid) {
+      return reply.status(400).send({ error: validation.error })
+    }
+
+    // Validate and sanitize pagination
+    const { limit, offset } = validatePagination(request.query.limit, request.query.offset)
 
     const event = await Event.findById(id).lean()
     if (!event) {
@@ -275,7 +356,21 @@ export async function eventRoutes(fastify: FastifyInstance) {
       return reply.status(401).send({ error: 'Unauthorized' })
     }
 
-    const position = await getUserPosition(request.params.id, Number(telegramId))
+    // Validate Telegram ID
+    const userId = Number(telegramId)
+    if (!isValidTelegramId(userId)) {
+      return reply.status(401).send({ error: 'Invalid Telegram ID' })
+    }
+
+    const { id } = request.params
+
+    // Validate event ID
+    const validation = validateEventId(id)
+    if (!validation.valid) {
+      return reply.status(400).send({ error: validation.error })
+    }
+
+    const position = await getUserPosition(id, userId)
     if (!position) {
       return { position: null, message: 'Not participating yet' }
     }
@@ -290,12 +385,26 @@ export async function eventRoutes(fastify: FastifyInstance) {
       return reply.status(401).send({ error: 'Unauthorized' })
     }
 
-    const event = await Event.findById(request.params.id)
+    // Validate Telegram ID
+    const userId = Number(telegramId)
+    if (!isValidTelegramId(userId)) {
+      return reply.status(401).send({ error: 'Invalid Telegram ID' })
+    }
+
+    const { id } = request.params
+
+    // Validate event ID
+    const validation = validateEventId(id)
+    if (!validation.valid) {
+      return reply.status(400).send({ error: validation.error })
+    }
+
+    const event = await Event.findById(id)
     if (!event) {
       return reply.status(404).send({ error: 'Event not found' })
     }
 
-    if (event.ownerId !== Number(telegramId)) {
+    if (event.ownerId !== userId) {
       return reply.status(403).send({ error: 'Not your event' })
     }
 
@@ -306,7 +415,7 @@ export async function eventRoutes(fastify: FastifyInstance) {
     try {
       // Import SchedulerService dynamically to avoid circular deps
       const { SchedulerService } = await import('../services/scheduler')
-      await SchedulerService.completeEventManually(event._id.toString())
+      await SchedulerService.completeEventManually(id)
 
       const updatedEvent = await Event.findById(event._id).lean()
 

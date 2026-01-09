@@ -1,5 +1,5 @@
 import { bot } from './telegram'
-import { Payment } from '../models'
+import { Payment, IPayment } from '../models'
 import { Types } from 'mongoose'
 
 /**
@@ -135,7 +135,7 @@ export class PaymentService {
   static async handleSuccessfulPayment(
     telegramPaymentId: string,
     paymentId: string
-  ): Promise<Payment | null> {
+  ): Promise<IPayment | null> {
     const payment = await Payment.findById(paymentId)
 
     if (!payment) {
@@ -181,7 +181,7 @@ export class PaymentService {
   /**
    * Get payment by ID
    */
-  static async getPayment(paymentId: string): Promise<Payment | null> {
+  static async getPayment(paymentId: string): Promise<IPayment | null> {
     return Payment.findById(paymentId)
   }
 
@@ -191,7 +191,7 @@ export class PaymentService {
   static async getUserPayments(
     userId: number,
     limit: number = 50
-  ): Promise<Payment[]> {
+  ): Promise<IPayment[]> {
     return Payment.find({ userId })
       .sort({ createdAt: -1 })
       .limit(limit)
