@@ -12,6 +12,7 @@ export interface IUser extends Document {
   referralCode: string
   referredBy?: string
   referralsCount: number
+  isAdmin?: boolean
   createdAt: Date
   updatedAt: Date
 }
@@ -28,6 +29,7 @@ const UserSchema = new Schema<IUser>({
   referralCode: { type: String, unique: true },
   referredBy: { type: String },
   referralsCount: { type: Number, default: 0 },
+  isAdmin: { type: Boolean, default: false },
 }, { timestamps: true })
 
 // Generate referral code on save

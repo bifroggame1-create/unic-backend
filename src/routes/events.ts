@@ -94,17 +94,19 @@ export async function eventRoutes(fastify: FastifyInstance) {
       return reply.status(404).send({ error: 'User not found' })
     }
 
-    // Check event limits based on plan
-    const limits: Record<string, number> = {
-      free: 1,
-      trial: 3,
-      basic: 10,
-      advanced: -1, // unlimited
-      premium: -1,
-    }
-    const limit = limits[user.plan]
-    if (limit !== -1 && user.eventsThisMonth >= limit) {
-      return reply.status(403).send({ error: 'Event limit reached. Upgrade your plan.' })
+    // Check event limits based on plan (skip for admins)
+    if (!user.isAdmin) {
+      const limits: Record<string, number> = {
+        free: 1,
+        trial: 3,
+        basic: 10,
+        advanced: -1, // unlimited
+        premium: -1,
+      }
+      const limit = limits[user.plan]
+      if (limit !== -1 && user.eventsThisMonth >= limit) {
+        return reply.status(403).send({ error: 'Event limit reached. Upgrade your plan.' })
+      }
     }
 
     // Create event

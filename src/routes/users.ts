@@ -1,5 +1,6 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
 import { User } from '../models'
+import { grantAdminPrivileges } from '../middleware/admin'
 
 interface UpdateUserBody {
   username?: string
@@ -22,6 +23,7 @@ export async function userRoutes(fastify: FastifyInstance) {
       const newUser = new User({
         telegramId: Number(telegramId),
       })
+      await grantAdminPrivileges(newUser)
       await newUser.save()
       user = newUser.toObject()
     }
@@ -36,16 +38,21 @@ export async function userRoutes(fastify: FastifyInstance) {
       return reply.status(401).send({ error: 'Unauthorized' })
     }
 
-    const user = await User.findOneAndUpdate(
-      { telegramId: Number(telegramId) },
-      { $set: request.body },
-      { new: true }
-    ).lean()
-
-    if (!user) {
+    const userDoc = await User.findOne({ telegramId: Number(telegramId) })
+    if (!userDoc) {
       return reply.status(404).send({ error: 'User not found' })
     }
 
+    // Update fields
+    if (request.body.username) userDoc.username = request.body.username
+    if (request.body.firstName) userDoc.firstName = request.body.firstName
+    if (request.body.lastName) userDoc.lastName = request.body.lastName
+
+    // Check and grant admin privileges if username matches
+    await grantAdminPrivileges(userDoc)
+    await userDoc.save()
+
+    const user = userDoc.toObject()
     return { user }
   })
 
@@ -62,6 +69,7 @@ export async function userRoutes(fastify: FastifyInstance) {
       const newUser = new User({
         telegramId: Number(telegramId),
       })
+      await grantAdminPrivileges(newUser)
       await newUser.save()
       user = newUser.toObject()
     }
