@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify'
 import { Event, UserEventStats, User } from '../models'
 import { PointsService } from '../services/points'
+import { PaymentService } from '../services/payment'
 import { Types } from 'mongoose'
 
 export async function leaderboardRoutes(fastify: FastifyInstance) {
@@ -197,22 +198,20 @@ export async function leaderboardRoutes(fastify: FastifyInstance) {
     }
   })
 
-  // Purchase boost
-  fastify.post('/events/:id/boost', async (request, reply) => {
+  // Create boost purchase invoice
+  fastify.post('/events/:id/boost/invoice', async (request, reply) => {
     const { id } = request.params as { id: string }
     const {
       userId,
       boostType,
-      starsPaid,
     } = request.body as {
       userId: number
       boostType: 'x2_24h' | 'x1.5_forever'
-      starsPaid: number
     }
 
-    if (!userId || !boostType || !starsPaid) {
+    if (!userId || !boostType) {
       return reply.status(400).send({
-        error: 'userId, boostType, and starsPaid are required',
+        error: 'userId and boostType are required',
       })
     }
 
@@ -239,8 +238,65 @@ export async function leaderboardRoutes(fastify: FastifyInstance) {
         })
       }
 
+      // Create Telegram Stars invoice
+      const { invoiceLink, paymentId } = await PaymentService.createBoostInvoice(
+        userId,
+        id,
+        boostType
+      )
+
+      return reply.send({
+        invoiceLink,
+        paymentId,
+        amount: boostType === 'x2_24h' ? 100 : 200,
+      })
+    } catch (error: any) {
+      console.error('Error creating boost invoice:', error)
+      return reply.status(500).send({ error: 'Failed to create invoice' })
+    }
+  })
+
+  // Apply boost after successful payment
+  fastify.post('/events/:id/boost/apply', async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const {
+      userId,
+      paymentId,
+    } = request.body as {
+      userId: number
+      paymentId: string
+    }
+
+    if (!userId || !paymentId) {
+      return reply.status(400).send({
+        error: 'userId and paymentId are required',
+      })
+    }
+
+    try {
+      // Verify payment was successful
+      const payment = await PaymentService.getPayment(paymentId)
+
+      if (!payment) {
+        return reply.status(404).send({ error: 'Payment not found' })
+      }
+
+      if (payment.status !== 'success') {
+        return reply.status(400).send({ error: 'Payment not completed' })
+      }
+
+      if (payment.userId !== userId) {
+        return reply.status(403).send({ error: 'Unauthorized' })
+      }
+
+      const boostType = payment.metadata?.boostType as 'x2_24h' | 'x1.5_forever'
+
+      if (!boostType) {
+        return reply.status(400).send({ error: 'Invalid payment metadata' })
+      }
+
       // Apply boost via PointsService
-      await PointsService.applyBoost(userId, id, boostType, starsPaid)
+      await PointsService.applyBoost(userId, id, boostType, payment.amount)
 
       // Get updated user position
       const position = await PointsService.getUserPosition(userId, id)
@@ -254,7 +310,7 @@ export async function leaderboardRoutes(fastify: FastifyInstance) {
           expiresAt:
             boostType === 'x2_24h'
               ? new Date(Date.now() + 24 * 60 * 60 * 1000)
-              : event.endsAt,
+              : undefined,
         },
         userPosition: position,
       })
@@ -262,10 +318,6 @@ export async function leaderboardRoutes(fastify: FastifyInstance) {
       console.error('Error applying boost:', error)
 
       if (error.message === 'User already has an active boost') {
-        return reply.status(400).send({ error: error.message })
-      }
-
-      if (error.message === 'Event not found or not active') {
         return reply.status(400).send({ error: error.message })
       }
 

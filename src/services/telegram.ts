@@ -2,6 +2,7 @@ import { Bot, Context } from 'grammy'
 import { Event, Channel, User } from '../models'
 import { recordActivity } from './scoring'
 import { PointsService } from './points'
+import { PaymentService } from './payment'
 
 const BOT_TOKEN = process.env.BOT_TOKEN || ''
 
@@ -206,6 +207,69 @@ export async function sendEventPost(
   return message.message_id
 }
 
+// Handle pre-checkout query (approve payment)
+bot.on('pre_checkout_query', async (ctx) => {
+  try {
+    const paymentId = ctx.preCheckoutQuery.invoice_payload
+
+    // Verify payment exists and is pending
+    const payment = await PaymentService.getPayment(paymentId)
+
+    if (!payment || payment.status !== 'pending') {
+      await ctx.answerPreCheckoutQuery(false, {
+        error_message: 'Payment not found or already processed',
+      })
+      return
+    }
+
+    // Approve the payment
+    await ctx.answerPreCheckoutQuery(true)
+  } catch (error) {
+    console.error('Pre-checkout query error:', error)
+    await ctx.answerPreCheckoutQuery(false, {
+      error_message: 'Payment verification failed',
+    })
+  }
+})
+
+// Handle successful payment
+bot.on('message:successful_payment', async (ctx) => {
+  try {
+    const payment = ctx.message.successful_payment
+
+    if (!payment) return
+
+    const paymentId = payment.invoice_payload
+    const telegramPaymentId = payment.telegram_payment_charge_id
+
+    // Mark payment as successful
+    const paymentRecord = await PaymentService.handleSuccessfulPayment(
+      telegramPaymentId,
+      paymentId
+    )
+
+    if (!paymentRecord) return
+
+    // Send confirmation message
+    const { type, amount, metadata } = paymentRecord
+
+    if (type === 'boost') {
+      const boostType = metadata?.boostType as 'x2_24h' | 'x1.5_forever'
+      const boostName = boostType === 'x2_24h' ? '2x Boost (24h)' : '1.5x Boost (Forever)'
+
+      await ctx.reply(
+        `✅ **Payment Successful!**\\n\\n` +
+        `You purchased: ${boostName}\\n` +
+        `Amount: ${amount} ⭐\\n\\n` +
+        `Your boost will be activated shortly. Return to the event to see your new multiplier!`,
+        { parse_mode: 'Markdown' }
+      )
+    }
+  } catch (error) {
+    console.error('Successful payment handler error:', error)
+  }
+})
+
 // Webhook handler - process update directly
 export async function handleWebhook(update: any) {
   await bot.handleUpdate(update)
@@ -219,6 +283,7 @@ export async function setWebhookUrl(url: string) {
       'channel_post',
       'message_reaction',
       'callback_query',
+      'pre_checkout_query',
     ],
     drop_pending_updates: true,
   })
