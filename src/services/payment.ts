@@ -15,22 +15,15 @@ import { Types } from 'mongoose'
 export class PaymentService {
   /**
    * Create Telegram Stars invoice for boost purchase
+   * MVP: Only x1.5 multiplier until event ends, 100 Stars
    */
   static async createBoostInvoice(
     userId: number,
     eventId: Types.ObjectId | string,
-    boostType: 'x2_24h' | 'x1.5_forever'
+    amount: number = 100
   ): Promise<{ invoiceLink: string; paymentId: string }> {
-    // Determine Stars amount
-    const amount = boostType === 'x2_24h' ? 100 : 200
-
-    const title = boostType === 'x2_24h'
-      ? '2x Boost (24 hours)'
-      : '1.5x Boost (Forever)'
-
-    const description = boostType === 'x2_24h'
-      ? 'Double your points for 24 hours'
-      : 'Get 1.5x points multiplier until event ends'
+    const title = 'Boost x1.5'
+    const description = 'Увеличь свои шансы с множителем x1.5 до конца события'
 
     // Create payment record
     const payment = new Payment({
@@ -40,7 +33,7 @@ export class PaymentService {
       amount,
       currency: 'STARS',
       status: 'pending',
-      metadata: { boostType },
+      metadata: { multiplier: 1.5, duration: 'event' },
     })
 
     await payment.save()
@@ -62,6 +55,53 @@ export class PaymentService {
       }
     } catch (error) {
       // Mark payment as failed
+      payment.status = 'failed'
+      await payment.save()
+      throw error
+    }
+  }
+
+  /**
+   * Create Telegram Stars invoice for Second Chance purchase
+   * MVP: 75 Stars for one additional draw entry
+   */
+  static async createSecondChanceInvoice(
+    userId: number,
+    eventId: Types.ObjectId | string,
+    amount: number = 75
+  ): Promise<{ invoiceLink: string; paymentId: string }> {
+    const title = 'Second Chance'
+    const description = 'Получи дополнительный шанс в розыгрыше призов'
+
+    // Create payment record
+    const payment = new Payment({
+      userId,
+      eventId,
+      type: 'second_chance',
+      amount,
+      currency: 'STARS',
+      status: 'pending',
+      metadata: {},
+    })
+
+    await payment.save()
+
+    try {
+      // Create Telegram Stars invoice
+      const invoiceLink = await bot.api.createInvoiceLink(
+        title,
+        description,
+        payment._id.toString(),
+        '',
+        'XTR',
+        [{ label: title, amount }]
+      )
+
+      return {
+        invoiceLink,
+        paymentId: payment._id.toString(),
+      }
+    } catch (error) {
       payment.status = 'failed'
       await payment.save()
       throw error

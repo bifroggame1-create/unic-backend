@@ -4,6 +4,7 @@ import { channelRoutes } from './channels'
 import { userRoutes } from './users'
 import { leaderboardRoutes } from './leaderboard'
 import { giftsRoutes } from './gifts'
+import { monetizationRoutes } from './monetization'
 
 export async function registerRoutes(fastify: FastifyInstance) {
   // API prefix
@@ -13,6 +14,7 @@ export async function registerRoutes(fastify: FastifyInstance) {
     api.register(userRoutes)
     api.register(leaderboardRoutes)
     api.register(giftsRoutes)
+    api.register(monetizationRoutes)
   }, { prefix: '/api' })
 
   // Health check
