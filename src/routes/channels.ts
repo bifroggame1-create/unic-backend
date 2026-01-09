@@ -1,7 +1,7 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
 import { Channel } from '../models'
 import { verifyChannelAdmin, verifyBotAdmin, getChannelInfo } from '../services/telegram'
-import { isValidTelegramId, isValidObjectId, sanitizeString } from '../utils/validation'
+import { isValidTelegramId, isValidChannelId, isValidObjectId, sanitizeString } from '../utils/validation'
 
 interface AddChannelBody {
   channelId?: number
@@ -50,7 +50,7 @@ export async function channelRoutes(fastify: FastifyInstance) {
     }
 
     // Validate channel ID if provided
-    if (channelId && !isValidTelegramId(channelId)) {
+    if (channelId && !isValidChannelId(channelId)) {
       return reply.status(400).send({ error: 'Invalid channelId' })
     }
 

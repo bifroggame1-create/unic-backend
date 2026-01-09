@@ -2,7 +2,7 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
 import { Event, User } from '../models'
 import { verifyChannelAdmin, verifyBotAdmin, sendEventPost } from '../services/telegram'
 import { PaymentService } from '../services/payment'
-import { validateEventId, isValidTelegramId, isValidDuration, isValidActivityType, isValidWinnersCount, sanitizeString, isValidObjectId } from '../utils/validation'
+import { validateEventId, isValidTelegramId, isValidChannelId, isValidDuration, isValidActivityType, isValidWinnersCount, sanitizeString, isValidObjectId } from '../utils/validation'
 
 interface CreateEventBody {
   channelId: number
@@ -57,7 +57,7 @@ export async function eventRoutes(fastify: FastifyInstance) {
     const { channelId, duration, activityType, winnersCount, prizes, packageId, title, boostsEnabled } = request.body
 
     // Validate required fields
-    if (!channelId || !isValidTelegramId(channelId)) {
+    if (!channelId || !isValidChannelId(channelId)) {
       return reply.status(400).send({ error: 'Invalid channelId' })
     }
 

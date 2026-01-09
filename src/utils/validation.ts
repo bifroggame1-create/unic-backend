@@ -69,10 +69,17 @@ export function validatePagination(limit?: string, offset?: string): {
 }
 
 /**
- * Validate Telegram user ID
+ * Validate Telegram user ID (must be positive)
  */
 export function isValidTelegramId(id: number): boolean {
   return Number.isInteger(id) && id > 0 && id < Number.MAX_SAFE_INTEGER
+}
+
+/**
+ * Validate Telegram channel ID (can be negative for channels/supergroups)
+ */
+export function isValidChannelId(id: number): boolean {
+  return Number.isInteger(id) && id !== 0 && Math.abs(id) < Number.MAX_SAFE_INTEGER
 }
 
 /**
