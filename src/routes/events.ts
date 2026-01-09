@@ -2,12 +2,22 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
 import { Event, Channel, User, Participation } from '../models'
 import { getLeaderboard, getUserPosition, getParticipantsCount, finalizeEvent } from '../services/scoring'
 import { verifyChannelAdmin, verifyBotAdmin, getChannelInfo, sendEventPost } from '../services/telegram'
+import { PaymentService } from '../services/payment'
 
 interface CreateEventBody {
   channelId: number
   duration: '24h' | '48h' | '72h' | '7d'
   activityType: 'reactions' | 'comments' | 'all'
   winnersCount: number
+  prizes?: Array<{
+    giftId: string
+    name: string
+    position: number
+    value?: number
+  }>
+  packageId?: string
+  title?: string
+  boostsEnabled?: boolean
 }
 
 export async function eventRoutes(fastify: FastifyInstance) {
@@ -49,7 +59,7 @@ export async function eventRoutes(fastify: FastifyInstance) {
       return reply.status(401).send({ error: 'Unauthorized' })
     }
 
-    const { channelId, duration, activityType, winnersCount } = request.body
+    const { channelId, duration, activityType, winnersCount, prizes, packageId, title, boostsEnabled } = request.body
 
     // Verify user is channel admin
     const isAdmin = await verifyChannelAdmin(channelId, Number(telegramId))
@@ -86,10 +96,14 @@ export async function eventRoutes(fastify: FastifyInstance) {
     const event = new Event({
       channelId,
       ownerId: Number(telegramId),
+      title,
       duration,
       activityType,
       winnersCount,
-      status: 'pending_payment',
+      prizes: prizes || [],
+      packageId: packageId || 'free',
+      boostsEnabled: boostsEnabled !== undefined ? boostsEnabled : true,
+      status: packageId && packageId !== 'free' ? 'pending_payment' : 'draft',
     })
 
     await event.save()
@@ -102,7 +116,64 @@ export async function eventRoutes(fastify: FastifyInstance) {
     return { event }
   })
 
-  // Activate event (after payment)
+  // Create payment invoice for event package
+  fastify.post('/events/:id/payment', async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+    const telegramId = request.headers['x-telegram-id']
+    if (!telegramId) {
+      return reply.status(401).send({ error: 'Unauthorized' })
+    }
+
+    const event = await Event.findById(request.params.id)
+    if (!event) {
+      return reply.status(404).send({ error: 'Event not found' })
+    }
+
+    if (event.ownerId !== Number(telegramId)) {
+      return reply.status(403).send({ error: 'Not your event' })
+    }
+
+    if (event.status !== 'pending_payment') {
+      return reply.status(400).send({ error: 'Event is not pending payment' })
+    }
+
+    // Package pricing (in Stars)
+    const packages: Record<string, { amount: number; name: string }> = {
+      starter: { amount: 500, name: 'Starter Package' },
+      growth: { amount: 2000, name: 'Growth Package' },
+      pro: { amount: 5000, name: 'Pro Package' },
+    }
+
+    const pkg = packages[event.packageId || 'starter']
+    if (!pkg) {
+      return reply.status(400).send({ error: 'Invalid package' })
+    }
+
+    try {
+      const { invoiceLink, paymentId } = await PaymentService.createEventPackageInvoice(
+        Number(telegramId),
+        event._id,
+        event.packageId || 'starter',
+        pkg.amount
+      )
+
+      // Save payment ID to event
+      event.paymentId = paymentId
+      event.pricePaid = pkg.amount
+      await event.save()
+
+      return reply.send({
+        invoiceLink,
+        paymentId,
+        amount: pkg.amount,
+        packageName: pkg.name,
+      })
+    } catch (error: any) {
+      console.error('Error creating payment invoice:', error)
+      return reply.status(500).send({ error: 'Failed to create invoice' })
+    }
+  })
+
+  // Activate event (after payment or for free events)
   fastify.post('/events/:id/activate', async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
     const telegramId = request.headers['x-telegram-id']
     if (!telegramId) {
@@ -116,6 +187,18 @@ export async function eventRoutes(fastify: FastifyInstance) {
 
     if (event.ownerId !== Number(telegramId)) {
       return reply.status(403).send({ error: 'Not your event' })
+    }
+
+    // Verify payment for paid packages
+    if (event.packageId && event.packageId !== 'free') {
+      if (!event.paymentId) {
+        return reply.status(400).send({ error: 'Payment not initiated' })
+      }
+
+      const payment = await PaymentService.getPayment(event.paymentId)
+      if (!payment || payment.status !== 'success') {
+        return reply.status(400).send({ error: 'Payment not completed' })
+      }
     }
 
     // Calculate end time

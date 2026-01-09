@@ -3,6 +3,7 @@ import { eventRoutes } from './events'
 import { channelRoutes } from './channels'
 import { userRoutes } from './users'
 import { leaderboardRoutes } from './leaderboard'
+import { giftsRoutes } from './gifts'
 
 export async function registerRoutes(fastify: FastifyInstance) {
   // API prefix
@@ -11,6 +12,7 @@ export async function registerRoutes(fastify: FastifyInstance) {
     api.register(channelRoutes)
     api.register(userRoutes)
     api.register(leaderboardRoutes)
+    api.register(giftsRoutes)
   }, { prefix: '/api' })
 
   // Health check
