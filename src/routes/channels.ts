@@ -1,0 +1,119 @@
+import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
+import { Channel } from '../models'
+import { verifyChannelAdmin, verifyBotAdmin, getChannelInfo } from '../services/telegram'
+
+interface AddChannelBody {
+  channelId?: number
+  username?: string
+}
+
+export async function channelRoutes(fastify: FastifyInstance) {
+  // Get user's channels
+  fastify.get('/channels', async (request: FastifyRequest, reply: FastifyReply) => {
+    const telegramId = request.headers['x-telegram-id']
+    if (!telegramId) {
+      return reply.status(401).send({ error: 'Unauthorized' })
+    }
+
+    const channels = await Channel.find({ ownerId: Number(telegramId) })
+      .sort({ addedAt: -1 })
+      .lean()
+
+    return { channels }
+  })
+
+  // Add/verify channel
+  fastify.post('/channels', async (request: FastifyRequest<{ Body: AddChannelBody }>, reply: FastifyReply) => {
+    const telegramId = request.headers['x-telegram-id']
+    if (!telegramId) {
+      return reply.status(401).send({ error: 'Unauthorized' })
+    }
+
+    const { channelId, username } = request.body
+
+    // Get channel info
+    const channelIdentifier = channelId || `@${username?.replace('@', '')}`
+    const info = await getChannelInfo(channelIdentifier)
+
+    if (!info) {
+      return reply.status(404).send({ error: 'Channel not found. Make sure @UnicBot is added as admin.' })
+    }
+
+    // Verify user is channel admin
+    const isAdmin = await verifyChannelAdmin(info.id, Number(telegramId))
+    if (!isAdmin) {
+      return reply.status(403).send({ error: 'You must be an admin of this channel' })
+    }
+
+    // Verify bot is admin
+    const botIsAdmin = await verifyBotAdmin(info.id)
+    if (!botIsAdmin) {
+      return reply.status(400).send({ error: 'Please add @UnicBot as admin to your channel first' })
+    }
+
+    // Upsert channel
+    const channel = await Channel.findOneAndUpdate(
+      { chatId: info.id },
+      {
+        $set: {
+          username: info.username,
+          title: info.title,
+          ownerId: Number(telegramId),
+          isVerified: true,
+          subscribersCount: info.subscribersCount,
+        },
+      },
+      { upsert: true, new: true }
+    )
+
+    return { channel }
+  })
+
+  // Remove channel
+  fastify.delete('/channels/:id', async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+    const telegramId = request.headers['x-telegram-id']
+    if (!telegramId) {
+      return reply.status(401).send({ error: 'Unauthorized' })
+    }
+
+    const channel = await Channel.findById(request.params.id)
+    if (!channel) {
+      return reply.status(404).send({ error: 'Channel not found' })
+    }
+
+    if (channel.ownerId !== Number(telegramId)) {
+      return reply.status(403).send({ error: 'Not your channel' })
+    }
+
+    await Channel.findByIdAndDelete(request.params.id)
+
+    return { success: true }
+  })
+
+  // Refresh channel info
+  fastify.post('/channels/:id/refresh', async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+    const telegramId = request.headers['x-telegram-id']
+    if (!telegramId) {
+      return reply.status(401).send({ error: 'Unauthorized' })
+    }
+
+    const channel = await Channel.findById(request.params.id)
+    if (!channel) {
+      return reply.status(404).send({ error: 'Channel not found' })
+    }
+
+    if (channel.ownerId !== Number(telegramId)) {
+      return reply.status(403).send({ error: 'Not your channel' })
+    }
+
+    const info = await getChannelInfo(channel.chatId)
+    if (info) {
+      channel.title = info.title
+      channel.username = info.username
+      channel.subscribersCount = info.subscribersCount
+      await channel.save()
+    }
+
+    return { channel }
+  })
+}
