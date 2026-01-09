@@ -1,6 +1,7 @@
 import { Bot, Context } from 'grammy'
 import { Event, Channel, User } from '../models'
 import { recordActivity } from './scoring'
+import { PointsService } from './points'
 
 const BOT_TOKEN = process.env.BOT_TOKEN || ''
 
@@ -61,7 +62,8 @@ bot.callbackQuery('how_it_works', async (ctx) => {
 export async function handleChannelReaction(
   channelId: number,
   userId: number,
-  username?: string
+  username?: string,
+  messageId?: number
 ) {
   // Find active event for this channel
   const event = await Event.findOne({
@@ -72,13 +74,23 @@ export async function handleChannelReaction(
 
   if (!event) return null
 
+  // Award points using PointsService
+  const earnedPoints = await PointsService.handleReaction(
+    userId,
+    event._id,
+    messageId || 0
+  )
+
+  console.log(`✅ User ${userId} earned ${earnedPoints} points for reaction`)
+
+  // Legacy: also record activity for backwards compat
   const points = await recordActivity(event._id, {
     telegramId: userId,
     username,
     type: 'reaction',
   })
 
-  return { eventId: event._id, points }
+  return { eventId: event._id, points: earnedPoints }
 }
 
 // Handle channel comments
@@ -87,7 +99,8 @@ export async function handleChannelComment(
   userId: number,
   username?: string,
   firstName?: string,
-  isReply: boolean = false
+  isReply: boolean = false,
+  messageId?: number
 ) {
   const event = await Event.findOne({
     channelId,
@@ -97,6 +110,17 @@ export async function handleChannelComment(
 
   if (!event) return null
 
+  // Award points using PointsService
+  const earnedPoints = await PointsService.handleComment(
+    userId,
+    event._id,
+    messageId || 0,
+    isReply
+  )
+
+  console.log(`✅ User ${userId} earned ${earnedPoints} points for ${isReply ? 'reply' : 'comment'}`)
+
+  // Legacy: also record activity for backwards compat
   const points = await recordActivity(event._id, {
     telegramId: userId,
     username,
@@ -104,7 +128,7 @@ export async function handleChannelComment(
     type: isReply ? 'reply' : 'comment',
   })
 
-  return { eventId: event._id, points }
+  return { eventId: event._id, points: earnedPoints }
 }
 
 // Verify channel admin rights

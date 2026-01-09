@@ -17,6 +17,7 @@ export interface IEvent extends Document {
     giftId: string
     name: string
     position: number
+    value?: number
   }[]
   winners: {
     telegramId: number
@@ -25,6 +26,8 @@ export interface IEvent extends Document {
     position: number
     giftSent: boolean
   }[]
+  boostsEnabled: boolean
+  packageId?: string
   postMessageId?: number
   paymentId?: string
   pricePaid?: number
@@ -60,7 +63,8 @@ const EventSchema = new Schema<IEvent>({
   prizes: [{
     giftId: { type: String },
     name: { type: String },
-    position: { type: Number }
+    position: { type: Number },
+    value: { type: Number }
   }],
   winners: [{
     telegramId: { type: Number },
@@ -69,6 +73,8 @@ const EventSchema = new Schema<IEvent>({
     position: { type: Number },
     giftSent: { type: Boolean, default: false }
   }],
+  boostsEnabled: { type: Boolean, default: true },
+  packageId: { type: String },
   postMessageId: { type: Number },
   paymentId: { type: String },
   pricePaid: { type: Number },
