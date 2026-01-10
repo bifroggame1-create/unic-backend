@@ -255,4 +255,41 @@ export async function monetizationRoutes(fastify: FastifyInstance) {
 
     return reply.send({ success: true })
   })
+
+  // Get payment status
+  fastify.get('/payments/:id/status', async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+    const telegramId = request.headers['x-telegram-id']
+    if (!telegramId) {
+      return reply.status(401).send({ error: 'Unauthorized' })
+    }
+
+    const userId = Number(telegramId)
+    if (!isValidTelegramId(userId)) {
+      return reply.status(401).send({ error: 'Invalid Telegram ID' })
+    }
+
+    const { id } = request.params
+    if (!isValidObjectId(id)) {
+      return reply.status(400).send({ error: 'Invalid payment ID' })
+    }
+
+    const payment = await PaymentService.getPayment(id)
+    if (!payment) {
+      return reply.status(404).send({ error: 'Payment not found' })
+    }
+
+    // Verify payment belongs to user
+    if (payment.userId !== userId) {
+      return reply.status(403).send({ error: 'Unauthorized' })
+    }
+
+    return reply.send({
+      paymentId: payment._id,
+      status: payment.status,
+      type: payment.type,
+      amount: payment.amount,
+      currency: payment.currency,
+      createdAt: payment.createdAt,
+    })
+  })
 }
