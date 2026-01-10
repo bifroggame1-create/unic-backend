@@ -27,11 +27,17 @@ export class SchedulerService {
 
     // Run immediately on start
     this.processEvents()
+    this.checkExpiredSubscriptions()
 
     // Then run every minute
     this.intervalId = setInterval(() => {
       this.processEvents()
     }, 60 * 1000) // Every 60 seconds
+
+    // Check subscriptions every hour
+    setInterval(() => {
+      this.checkExpiredSubscriptions()
+    }, 60 * 60 * 1000) // Every hour
   }
 
   /**
@@ -42,6 +48,37 @@ export class SchedulerService {
       clearInterval(this.intervalId)
       this.intervalId = null
       console.log('⏰ Scheduler stopped')
+    }
+  }
+
+  /**
+   * Check and downgrade expired subscriptions
+   */
+  private static async checkExpiredSubscriptions() {
+    try {
+      const { User } = await import('../models')
+
+      // Find users with expired plans
+      const expiredUsers = await User.find({
+        plan: { $ne: 'free' },
+        planExpiresAt: { $lt: new Date() }
+      })
+
+      if (expiredUsers.length > 0) {
+        console.log(`⏰ Found ${expiredUsers.length} expired subscriptions`)
+      }
+
+      for (const user of expiredUsers) {
+        const oldPlan = user.plan
+        user.plan = 'free'
+        user.planExpiresAt = undefined
+        user.eventsThisMonth = 0 // Reset event counter
+        await user.save()
+
+        console.log(`📉 User ${user.telegramId} downgraded from ${oldPlan} to free (subscription expired)`)
+      }
+    } catch (error) {
+      console.error('⏰ Error checking expired subscriptions:', error)
     }
   }
 
