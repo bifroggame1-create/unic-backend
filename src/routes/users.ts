@@ -167,24 +167,32 @@ export async function userRoutes(fastify: FastifyInstance) {
       return reply.status(404).send({ error: 'User not found' })
     }
 
-    // Get all user's events
-    const events = await Event.find({ ownerId: userId }).lean()
+    // Use aggregation for efficient stats calculation
+    const stats = await Event.aggregate([
+      { $match: { ownerId: userId } },
+      {
+        $group: {
+          _id: null,
+          totalParticipants: { $sum: '$participantsCount' },
+          totalReactions: { $sum: '$totalReactions' },
+          totalComments: { $sum: '$totalComments' },
+          activeEvents: {
+            $sum: { $cond: [{ $eq: ['$status', 'active'] }, 1, 0] }
+          }
+        }
+      }
+    ])
 
-    // Calculate total participants across all events
-    const totalParticipants = events.reduce((sum, event) => sum + (event.participantsCount || 0), 0)
-
-    // Calculate total engagement (reactions + comments) across all events
-    const totalReactions = events.reduce((sum, event) => sum + (event.totalReactions || 0), 0)
-    const totalComments = events.reduce((sum, event) => sum + (event.totalComments || 0), 0)
+    const totalParticipants = stats[0]?.totalParticipants || 0
+    const totalReactions = stats[0]?.totalReactions || 0
+    const totalComments = stats[0]?.totalComments || 0
+    const activeEvents = stats[0]?.activeEvents || 0
     const totalEngagement = totalReactions + totalComments
 
     // Calculate engagement rate (interactions per participant)
     const engagementRate = totalParticipants > 0
       ? Math.round((totalEngagement / totalParticipants) * 100)
       : 0
-
-    // Get active events count
-    const activeEvents = events.filter(e => e.status === 'active').length
 
     return {
       eventsCreated: user.eventsCreated,

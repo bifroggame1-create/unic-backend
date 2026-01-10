@@ -27,17 +27,16 @@ export async function leaderboardRoutes(fastify: FastifyInstance) {
       // Get top 10 for preview
       const topTen = await PointsService.calculateLeaderboard(id, 10, 0)
 
-      // Enrich with user data
-      const enrichedTopTen = await Promise.all(
-        topTen.map(async (entry) => {
-          const user = await User.findOne({ telegramId: entry.userId })
-          return {
-            ...entry,
-            username: user?.username,
-            firstName: user?.firstName,
-          }
-        })
-      )
+      // Enrich with user data - optimized to avoid N+1 queries
+      const userIds = topTen.map(entry => entry.userId)
+      const users = await User.find({ telegramId: { $in: userIds } }).lean()
+      const userMap = new Map(users.map(u => [u.telegramId, u]))
+
+      const enrichedTopTen = topTen.map(entry => ({
+        ...entry,
+        username: userMap.get(entry.userId)?.username,
+        firstName: userMap.get(entry.userId)?.firstName,
+      }))
 
       // Get user position if userId provided
       let userPosition = null
@@ -118,24 +117,23 @@ export async function leaderboardRoutes(fastify: FastifyInstance) {
         validOffset
       )
 
-      // Enrich with user data
-      const enriched = await Promise.all(
-        leaderboard.map(async (entry) => {
-          const user = await User.findOne({ telegramId: entry.userId })
-          return {
-            rank: entry.rank,
-            userId: entry.userId,
-            username: user?.username,
-            firstName: user?.firstName,
-            points: entry.points,
-            reactionsCount: entry.reactionsCount,
-            commentsCount: entry.commentsCount,
-            repliesCount: entry.repliesCount,
-            boostMultiplier: entry.boostMultiplier,
-            lastActivityAt: entry.lastActivityAt,
-          }
-        })
-      )
+      // Enrich with user data - optimized to avoid N+1 queries
+      const userIds = leaderboard.map(entry => entry.userId)
+      const users = await User.find({ telegramId: { $in: userIds } }).lean()
+      const userMap = new Map(users.map(u => [u.telegramId, u]))
+
+      const enriched = leaderboard.map(entry => ({
+        rank: entry.rank,
+        userId: entry.userId,
+        username: userMap.get(entry.userId)?.username,
+        firstName: userMap.get(entry.userId)?.firstName,
+        points: entry.points,
+        reactionsCount: entry.reactionsCount,
+        commentsCount: entry.commentsCount,
+        repliesCount: entry.repliesCount,
+        boostMultiplier: entry.boostMultiplier,
+        lastActivityAt: entry.lastActivityAt,
+      }))
 
       // Get total count for pagination
       const totalParticipants = await UserEventStats.countDocuments({
