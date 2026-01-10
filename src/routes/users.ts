@@ -283,12 +283,21 @@ export async function userRoutes(fastify: FastifyInstance) {
       return reply.status(404).send({ error: 'Payment not found' })
     }
 
+    if (payment.type !== 'plan_upgrade') {
+      return reply.status(400).send({ error: 'Invalid payment type' })
+    }
+
     if (payment.status !== 'success') {
       return reply.status(400).send({ error: 'Payment not completed' })
     }
 
     if (payment.userId !== user.telegramId) {
       return reply.status(403).send({ error: 'Unauthorized payment' })
+    }
+
+    // Verify payment is for the correct plan
+    if (payment.metadata?.planId !== planId) {
+      return reply.status(400).send({ error: 'Payment plan mismatch' })
     }
 
     // Calculate plan expiry (30 days from now)
@@ -298,7 +307,11 @@ export async function userRoutes(fastify: FastifyInstance) {
     // Update user plan
     user.plan = planId as 'trial' | 'basic' | 'advanced' | 'premium'
     user.planExpiresAt = expiryDate
+    // Reset events count to allow creating events with new plan limits
+    user.eventsThisMonth = 0
     await user.save()
+
+    console.log(`✅ User ${user.telegramId} upgraded to ${planId} plan until ${expiryDate.toISOString()}`)
 
     return {
       success: true,
