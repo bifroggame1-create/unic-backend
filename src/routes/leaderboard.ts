@@ -268,17 +268,20 @@ export async function leaderboardRoutes(fastify: FastifyInstance) {
         })
       }
 
+      // Determine amount based on boost type
+      const amount = boostType === 'x2_24h' ? 100 : 200
+
       // Create Telegram Stars invoice
       const { invoiceLink, paymentId } = await PaymentService.createBoostInvoice(
         userId,
         id,
-        boostType
+        amount
       )
 
       return reply.send({
         invoiceLink,
         paymentId,
-        amount: boostType === 'x2_24h' ? 100 : 200,
+        amount,
       })
     } catch (error: any) {
       console.error('Error creating boost invoice:', error)
