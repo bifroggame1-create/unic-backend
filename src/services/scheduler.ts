@@ -73,6 +73,13 @@ export class SchedulerService {
         user.plan = 'free'
         user.planExpiresAt = undefined
         user.eventsThisMonth = 0 // Reset event counter
+
+        // Role transition: if demo was used and no subscription, downgrade to regular user
+        if (user.hasUsedDemo && user.userRole === 'admin') {
+          user.userRole = 'user'
+          console.log(`👤 User ${user.telegramId} transitioned from admin to regular user (demo used + no subscription)`)
+        }
+
         await user.save()
 
         console.log(`📉 User ${user.telegramId} downgraded from ${oldPlan} to free (subscription expired)`)
