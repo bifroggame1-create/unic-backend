@@ -13,6 +13,8 @@ export interface IUser extends Document {
   referredBy?: string
   referralsCount: number
   isAdmin?: boolean
+  userRole: 'admin' | 'user' // admin = creates events, user = participates only
+  hasUsedDemo: boolean // Track if demo event was used
   createdAt: Date
   updatedAt: Date
 }
@@ -30,6 +32,8 @@ const UserSchema = new Schema<IUser>({
   referredBy: { type: String, index: true },
   referralsCount: { type: Number, default: 0 },
   isAdmin: { type: Boolean, default: false },
+  userRole: { type: String, enum: ['admin', 'user'], default: 'user', index: true },
+  hasUsedDemo: { type: Boolean, default: false },
 }, { timestamps: true })
 
 // Index for admin queries and analytics

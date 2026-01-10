@@ -165,10 +165,13 @@ export async function eventRoutes(fastify: FastifyInstance) {
 
     await event.save()
 
-    // Update user stats
+    // Update user stats and promote to admin role
     await User.findByIdAndUpdate(user._id, {
       $inc: { eventsCreated: 1, eventsThisMonth: 1 },
+      $set: { userRole: 'admin' } // Automatically become admin when creating events
     })
+
+    console.log(`✅ User ${userId} created event and promoted to admin role`)
 
     return { event }
   })
