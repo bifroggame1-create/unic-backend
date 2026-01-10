@@ -52,13 +52,24 @@ export async function userRoutes(fastify: FastifyInstance) {
 
       // Re-check admin privileges on every request
       const wasAdmin = user.isAdmin
+      const wasPremium = user.plan === 'premium'
+
       await grantAdminPrivileges(user)
-      if (user.isAdmin !== wasAdmin || user.plan !== 'premium' && user.isAdmin) {
+
+      // Always save if user became admin or if admin status changed
+      if (user.isAdmin !== wasAdmin) {
+        console.log(`🔑 User ${user.telegramId} admin status changed: ${wasAdmin} → ${user.isAdmin}`)
+        updated = true
+      }
+
+      if (user.isAdmin && user.plan !== 'premium') {
+        console.log(`🔑 Admin ${user.telegramId} upgraded to premium plan`)
         updated = true
       }
 
       if (updated) {
         await user.save()
+        console.log(`✅ User ${user.telegramId} saved with admin=${user.isAdmin}, plan=${user.plan}`)
       }
     }
 

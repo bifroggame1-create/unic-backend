@@ -47,14 +47,24 @@ export async function requireAdmin(
  * Grant admin privileges on user registration/update
  */
 export async function grantAdminPrivileges(user: any): Promise<void> {
-  if (!user.username) return
+  if (!user.username) {
+    console.log(`⚠️ User ${user.telegramId} has no username, cannot check admin status`)
+    return
+  }
 
   const username = user.username.toLowerCase().replace('@', '')
 
+  console.log(`🔍 Checking admin status for user ${user.telegramId} with username: ${username}`)
+
   if (ADMIN_USERNAMES.includes(username)) {
+    console.log(`✅ Username ${username} matches admin list!`)
     // Give admin unlimited plan
     user.plan = 'premium'
     user.planExpiresAt = new Date('2099-12-31') // Effectively unlimited
     user.isAdmin = true
+    user.userRole = 'admin'
+    console.log(`🔑 Granted admin privileges to ${username}`)
+  } else {
+    console.log(`❌ Username ${username} NOT in admin list: ${ADMIN_USERNAMES.join(', ')}`)
   }
 }
