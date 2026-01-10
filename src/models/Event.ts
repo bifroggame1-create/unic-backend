@@ -5,9 +5,11 @@ export interface IEvent extends Document {
   ownerId: number
   title?: string
   status: 'draft' | 'pending_payment' | 'active' | 'completed' | 'cancelled'
+  eventType: 'public' | 'premium'
   duration: '24h' | '48h' | '72h' | '7d'
   activityType: 'reactions' | 'comments' | 'all'
   winnersCount: number
+  minParticipants?: number
   startsAt?: Date
   endsAt?: Date
   participantsCount: number
@@ -44,6 +46,11 @@ const EventSchema = new Schema<IEvent>({
     enum: ['draft', 'pending_payment', 'active', 'completed', 'cancelled'],
     default: 'draft'
   },
+  eventType: {
+    type: String,
+    enum: ['public', 'premium'],
+    default: 'public'
+  },
   duration: {
     type: String,
     enum: ['24h', '48h', '72h', '7d'],
@@ -55,6 +62,7 @@ const EventSchema = new Schema<IEvent>({
     default: 'all'
   },
   winnersCount: { type: Number, required: true, min: 1, max: 100 },
+  minParticipants: { type: Number, min: 0, default: 0 },
   startsAt: { type: Date },
   endsAt: { type: Date },
   participantsCount: { type: Number, default: 0 },
