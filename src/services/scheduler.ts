@@ -58,10 +58,11 @@ export class SchedulerService {
     try {
       const { User } = await import('../models')
 
-      // Find users with expired plans
+      // Find users with expired plans (exclude isAdmin=true - they have lifetime subscription)
       const expiredUsers = await User.find({
         plan: { $ne: 'free' },
-        planExpiresAt: { $lt: new Date() }
+        planExpiresAt: { $lt: new Date() },
+        isAdmin: { $ne: true } // Admins have lifetime subscription
       })
 
       if (expiredUsers.length > 0) {
@@ -75,7 +76,8 @@ export class SchedulerService {
         user.eventsThisMonth = 0 // Reset event counter
 
         // Role transition: if demo was used and no subscription, downgrade to regular user
-        if (user.hasUsedDemo && user.userRole === 'admin') {
+        // BUT: skip isAdmin users (they keep admin role forever)
+        if (user.hasUsedDemo && user.userRole === 'admin' && !user.isAdmin) {
           user.userRole = 'user'
           console.log(`👤 User ${user.telegramId} transitioned from admin to regular user (demo used + no subscription)`)
         }
