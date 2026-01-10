@@ -38,7 +38,7 @@ const PaymentSchema = new Schema<IPayment>({
   metadata: { type: Schema.Types.Mixed }
 }, { timestamps: true })
 
-// Index for payment tracking
-PaymentSchema.index({ telegramPaymentId: 1 })
+// Compound index for user payment history queries
+PaymentSchema.index({ userId: 1, status: 1, createdAt: -1 })
 
 export const Payment = mongoose.model<IPayment>('Payment', PaymentSchema)

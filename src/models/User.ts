@@ -26,11 +26,14 @@ const UserSchema = new Schema<IUser>({
   planExpiresAt: { type: Date },
   eventsCreated: { type: Number, default: 0 },
   eventsThisMonth: { type: Number, default: 0 },
-  referralCode: { type: String, unique: true },
-  referredBy: { type: String },
+  referralCode: { type: String, unique: true, index: true },
+  referredBy: { type: String, index: true },
   referralsCount: { type: Number, default: 0 },
   isAdmin: { type: Boolean, default: false },
 }, { timestamps: true })
+
+// Index for admin queries and analytics
+UserSchema.index({ plan: 1, createdAt: -1 })
 
 // Generate referral code on save
 UserSchema.pre('save', function() {

@@ -80,7 +80,10 @@ const EventSchema = new Schema<IEvent>({
   pricePaid: { type: Number },
 }, { timestamps: true })
 
-// Index for finding active events
+// Index for finding active events that are ending soon
 EventSchema.index({ status: 1, endsAt: 1 })
+
+// Index for user's events dashboard queries
+EventSchema.index({ ownerId: 1, status: 1, createdAt: -1 })
 
 export const Event = mongoose.model<IEvent>('Event', EventSchema)
