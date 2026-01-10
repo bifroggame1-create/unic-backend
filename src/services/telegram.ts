@@ -126,13 +126,44 @@ export async function verifyChannelAdmin(channelId: number, userId: number): Pro
   }
 }
 
-// Verify bot is admin in channel
+// Verify bot is admin in channel with required permissions
 export async function verifyBotAdmin(channelId: number): Promise<boolean> {
   try {
     const botInfo = await bot.api.getMe()
     const member = await bot.api.getChatMember(channelId, botInfo.id)
-    return ['administrator'].includes(member.status)
-  } catch {
+
+    if (member.status !== 'administrator') {
+      console.log(`❌ Bot is not admin in channel ${channelId}`)
+      return false
+    }
+
+    // Check required permissions
+    const requiredPermissions = {
+      can_post_messages: true,
+      can_edit_messages: true,
+      can_delete_messages: false, // Optional
+      can_pin_messages: true,
+      can_manage_chat: false, // Optional
+    }
+
+    const hasPermissions = Object.entries(requiredPermissions).every(([perm, required]) => {
+      if (!required) return true
+      const hasPerm = (member as any)[perm]
+      if (!hasPerm) {
+        console.log(`⚠️ Bot missing permission: ${perm}`)
+      }
+      return hasPerm
+    })
+
+    if (!hasPermissions) {
+      console.log(`❌ Bot lacks required permissions in channel ${channelId}`)
+      return false
+    }
+
+    console.log(`✅ Bot has all required permissions in channel ${channelId}`)
+    return true
+  } catch (error) {
+    console.error(`Error verifying bot admin status:`, error)
     return false
   }
 }
@@ -165,28 +196,42 @@ export async function sendEventPost(
   webAppUrl: string
 ) {
   const durationText = {
-    '24h': '24 hours',
-    '48h': '48 hours',
-    '72h': '72 hours',
-    '7d': '7 days',
+    '24h': '24 часа',
+    '48h': '48 часов',
+    '72h': '72 часа',
+    '7d': '7 дней',
   }[duration] || duration
 
   const message = await bot.api.sendMessage(
     channelId,
-    `🎁 **Giveaway for Active Subscribers!**\n\n` +
-    `React to posts and leave comments to earn points.\n\n` +
-    `🏆 TOP-${winnersCount} will receive **Telegram Gifts**\n\n` +
-    `📊 Check your position and compete!\n\n` +
-    `⏱ Ends in: ${durationText}`,
+    `🎁 **КОНКУРС АКТИВНОСТИ!**\n\n` +
+    `📌 **Как участвовать:**\n` +
+    `• ❤️ Ставьте реакции на ЛЮБЫЕ посты канала = **1 балл**\n` +
+    `• 💬 Пишите комментарии в обсуждениях = **3 балла**\n` +
+    `• 💭 Отвечайте на комментарии других = **2 балла**\n\n` +
+    `🏆 **TOP-${winnersCount}** получат **Telegram Gifts**!\n` +
+    `⏱ **Осталось:** ${durationText}\n\n` +
+    `👇 Смотрите свою позицию в рейтинге:`,
     {
       parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [
-          [{ text: '📊 My Position', web_app: { url: `${webAppUrl}/event/${eventId}` } }],
+          [{ text: '📊 Моя позиция в рейтинге', web_app: { url: `${webAppUrl}/event/${eventId}` } }],
+          [{ text: '🎁 Посмотреть призы', web_app: { url: `${webAppUrl}/event/${eventId}` } }],
         ],
       },
     }
   )
+
+  // Pin the announcement message so it's visible to all subscribers
+  try {
+    await bot.api.pinChatMessage(channelId, message.message_id, {
+      disable_notification: false, // Notify users about the pinned message
+    })
+    console.log(`📌 Event announcement pinned in channel ${channelId}`)
+  } catch (error) {
+    console.error('Failed to pin message (bot needs pin_messages permission):', error)
+  }
 
   return message.message_id
 }

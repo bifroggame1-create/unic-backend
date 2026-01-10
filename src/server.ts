@@ -66,35 +66,70 @@ async function start() {
       const body = request.body as any
 
       try {
+        // Log all webhook events for debugging
+        console.log('📨 Webhook received:', JSON.stringify({
+          update_id: body.update_id,
+          type: Object.keys(body).filter(k => k !== 'update_id'),
+          timestamp: new Date().toISOString()
+        }, null, 2))
+
         // Handle message reactions (for scoring)
         if (body.message_reaction) {
           const reaction = body.message_reaction
+          console.log('❤️ Reaction detected:', {
+            chat_id: reaction.chat.id,
+            user_id: reaction.user?.id || reaction.actor_chat?.id,
+            username: reaction.user?.username,
+            message_id: reaction.message_id,
+            new_reaction: reaction.new_reaction,
+          })
+
           await handleChannelReaction(
             reaction.chat.id,
             reaction.user?.id || reaction.actor_chat?.id,
-            reaction.user?.username
+            reaction.user?.username,
+            reaction.message_id
           )
         }
 
         // Handle channel posts with comments
         if (body.channel_post) {
-          // Channel post - could track for context
+          console.log('📢 Channel post:', {
+            chat_id: body.channel_post.chat.id,
+            message_id: body.channel_post.message_id,
+            text: body.channel_post.text?.substring(0, 50),
+          })
         }
 
         // Handle messages in linked discussion groups
         if (body.message) {
           const msg = body.message
+          console.log('💬 Message received:', {
+            chat_id: msg.chat.id,
+            from: msg.from?.id,
+            is_reply: !!msg.reply_to_message,
+            has_forward: !!msg.reply_to_message?.forward_from_chat,
+          })
+
           // Check if it's a comment in channel's linked group
           if (msg.reply_to_message?.forward_from_chat || msg.is_automatic_forward === false) {
             const isReply = !!msg.reply_to_message && !msg.reply_to_message.forward_from_chat
             const channelId = msg.reply_to_message?.forward_from_chat?.id || msg.sender_chat?.id
+
+            console.log('💭 Comment/Reply detected:', {
+              channel_id: channelId,
+              user_id: msg.from?.id,
+              is_reply: isReply,
+            })
+
             if (channelId && msg.from) {
               await handleChannelComment(
                 channelId,
                 msg.from.id,
                 msg.from.username,
                 msg.from.first_name,
-                isReply
+                isReply,
+                msg.message_id
               )
             }
           }
@@ -106,6 +141,7 @@ async function start() {
         return { ok: true }
       } catch (error) {
         fastify.log.error(error, 'Webhook error')
+        console.error('❌ Webhook processing failed:', error)
         return { ok: true } // Always return ok to Telegram
       }
     })
