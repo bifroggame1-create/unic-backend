@@ -18,7 +18,7 @@ export async function leaderboardRoutes(fastify: FastifyInstance) {
     }
 
     try {
-      const event = await Event.findById(id)
+      const event = await Event.findById(id).lean()
 
       if (!event) {
         return reply.status(404).send({ error: 'Event not found' })
@@ -105,7 +105,7 @@ export async function leaderboardRoutes(fastify: FastifyInstance) {
     const { limit: validLimit, offset: validOffset } = validatePagination(limit, offset)
 
     try {
-      const event = await Event.findById(id)
+      const event = await Event.findById(id).lean()
 
       if (!event) {
         return reply.status(404).send({ error: 'Event not found' })
@@ -173,7 +173,7 @@ export async function leaderboardRoutes(fastify: FastifyInstance) {
     }
 
     try {
-      const event = await Event.findById(id)
+      const event = await Event.findById(id).lean()
 
       if (!event) {
         return reply.status(404).send({ error: 'Event not found' })
@@ -195,7 +195,7 @@ export async function leaderboardRoutes(fastify: FastifyInstance) {
       const stats = await UserEventStats.findOne({
         userId: validUserId,
         eventId: new Types.ObjectId(id),
-      })
+      }).lean()
 
       return reply.send({
         participating: true,
@@ -238,7 +238,7 @@ export async function leaderboardRoutes(fastify: FastifyInstance) {
     }
 
     try {
-      const event = await Event.findById(id)
+      const event = await Event.findById(id).lean()
 
       if (!event) {
         return reply.status(404).send({ error: 'Event not found' })
@@ -247,7 +247,7 @@ export async function leaderboardRoutes(fastify: FastifyInstance) {
       const stats = await UserEventStats.findOne({
         userId: validUserId,
         eventId: new Types.ObjectId(id),
-      })
+      }).lean()
 
       if (!stats) {
         return reply.send({

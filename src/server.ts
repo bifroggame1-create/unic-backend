@@ -12,6 +12,8 @@ import { connectDB } from './database'
 import { registerRoutes } from './routes'
 import { initBot, handleWebhook, handleChannelReaction, handleChannelComment } from './services/telegram'
 import { SchedulerService } from './services/scheduler'
+import { errorHandler, sendError, ErrorMessages } from './utils/errors'
+import { validateInitData } from './middleware/validateInitData'
 
 const PORT = parseInt(process.env.PORT || '3001', 10)
 const HOST = process.env.HOST || '0.0.0.0'
@@ -27,62 +29,101 @@ const fastify = Fastify({
 // Startup
 async function start() {
   try {
-    console.log('='.repeat(50))
-    console.log('🚀 UNIC Backend Starting...')
-    console.log('='.repeat(50))
+    fastify.log.info('='.repeat(50))
+    fastify.log.info('UNIC Backend Starting...')
+    fastify.log.info('='.repeat(50))
 
     // Connect to MongoDB
     await connectDB()
 
-    // Register rate limiting
+    // Security headers (MUST BE FIRST)
+    await fastify.register(helmet, {
+      contentSecurityPolicy: false,
+      crossOriginEmbedderPolicy: false,
+    })
+
+    // CORS (SECOND)
+    await fastify.register(cors, {
+      origin: [
+        FRONTEND_URL,
+        'http://localhost:3000',
+        'https://testunic1.vercel.app',
+        /\.vercel\.app$/,
+        /t\.me$/,
+      ],
+      credentials: true,
+      methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+      allowedHeaders: [
+        'Content-Type',
+        'Authorization',
+        'X-Telegram-Id',
+        'x-telegram-id',
+        'x-telegram-init-data',
+        'x-telegram-username',
+        'x-telegram-firstname',
+        'x-telegram-lastname',
+      ],
+      exposedHeaders: [
+        'Content-Type',
+        'Authorization',
+        'X-Telegram-Id',
+        'x-telegram-id',
+        'x-telegram-init-data',
+        'x-telegram-username',
+        'x-telegram-firstname',
+        'x-telegram-lastname',
+      ],
+      preflight: true,
+      preflightContinue: false,
+      optionsSuccessStatus: 204,
+    })
+
+    // Register rate limiting (THIRD)
     await fastify.register(rateLimit, {
       max: 100,
       timeWindow: '1 minute',
     })
 
-    // CORS
-    await fastify.register(cors, {
-      origin: [
-        FRONTEND_URL,
-        'http://localhost:3000',
-        /\.vercel\.app$/,
-      ],
-      credentials: true,
-      methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization', 'X-Telegram-Id'],
-    })
+    // Register global error handler
+    fastify.setErrorHandler(errorHandler)
 
-    // Security headers
-    await fastify.register(helmet, {
-      contentSecurityPolicy: false,
-      crossOriginEmbedderPolicy: false,
-    })
+    // Register Telegram initData validation middleware (optional for MVP)
+    // This validates that requests come from legitimate Telegram users
+    fastify.addHook('preHandler', validateInitData)
 
     // Register routes
     await registerRoutes(fastify)
 
     // Unified Telegram webhook endpoint
     fastify.post('/webhook', async (request, reply) => {
+      // Verify Telegram webhook secret token
+      const secretToken = request.headers['x-telegram-bot-api-secret-token'] as string
+      const expectedToken = process.env.WEBHOOK_SECRET
+
+      if (expectedToken && secretToken !== expectedToken) {
+        return sendError(reply, 403, ErrorMessages.FORBIDDEN, 'Invalid webhook secret token')
+      }
+
       const body = request.body as any
 
       try {
         // Log all webhook events for debugging
-        console.log('📨 Webhook received:', JSON.stringify({
+        fastify.log.info({
           update_id: body.update_id,
           type: Object.keys(body).filter(k => k !== 'update_id'),
           timestamp: new Date().toISOString()
-        }, null, 2))
+        }, 'Webhook received')
 
         // Handle message reactions (for scoring)
         if (body.message_reaction) {
           const reaction = body.message_reaction
-          console.log('❤️ Reaction detected:', {
+          fastify.log.info({
             chat_id: reaction.chat.id,
             user_id: reaction.user?.id || reaction.actor_chat?.id,
             username: reaction.user?.username,
             message_id: reaction.message_id,
             new_reaction: reaction.new_reaction,
-          })
+          }, 'Reaction detected')
 
           await handleChannelReaction(
             reaction.chat.id,
@@ -94,33 +135,33 @@ async function start() {
 
         // Handle channel posts with comments
         if (body.channel_post) {
-          console.log('📢 Channel post:', {
+          fastify.log.info({
             chat_id: body.channel_post.chat.id,
             message_id: body.channel_post.message_id,
             text: body.channel_post.text?.substring(0, 50),
-          })
+          }, 'Channel post')
         }
 
         // Handle messages in linked discussion groups
         if (body.message) {
           const msg = body.message
-          console.log('💬 Message received:', {
+          fastify.log.info({
             chat_id: msg.chat.id,
             from: msg.from?.id,
             is_reply: !!msg.reply_to_message,
             has_forward: !!msg.reply_to_message?.forward_from_chat,
-          })
+          }, 'Message received')
 
           // Check if it's a comment in channel's linked group
           if (msg.reply_to_message?.forward_from_chat || msg.is_automatic_forward === false) {
             const isReply = !!msg.reply_to_message && !msg.reply_to_message.forward_from_chat
             const channelId = msg.reply_to_message?.forward_from_chat?.id || msg.sender_chat?.id
 
-            console.log('💭 Comment/Reply detected:', {
+            fastify.log.info({
               channel_id: channelId,
               user_id: msg.from?.id,
               is_reply: isReply,
-            })
+            }, 'Comment/Reply detected')
 
             if (channelId && msg.from && msg.text) {
               await handleChannelComment(
@@ -141,8 +182,7 @@ async function start() {
 
         return { ok: true }
       } catch (error) {
-        fastify.log.error(error, 'Webhook error')
-        console.error('❌ Webhook processing failed:', error)
+        fastify.log.error({ error }, 'Webhook processing failed')
         return { ok: true } // Always return ok to Telegram
       }
     })
@@ -151,7 +191,7 @@ async function start() {
     fastify.get('/webhook/setup', async (request, reply) => {
       const webhookUrl = process.env.WEBHOOK_URL
       if (!webhookUrl) {
-        return { error: 'WEBHOOK_URL not configured' }
+        return sendError(reply, 500, ErrorMessages.INTERNAL_ERROR, 'WEBHOOK_URL not configured')
       }
 
       try {
@@ -159,7 +199,7 @@ async function start() {
         const result = await setWebhookUrl(webhookUrl)
         return { success: true, result }
       } catch (error: any) {
-        return { error: error.message }
+        return sendError(reply, 500, ErrorMessages.TELEGRAM_API_ERROR, error.message)
       }
     })
 
@@ -170,7 +210,7 @@ async function start() {
         const info = await getWebhookInfo()
         return { info }
       } catch (error: any) {
-        return { error: error.message }
+        return sendError(reply, 500, ErrorMessages.TELEGRAM_API_ERROR, error.message)
       }
     })
 
@@ -178,7 +218,7 @@ async function start() {
     if (process.env.BOT_TOKEN) {
       await initBot()
     } else {
-      console.log('⚠️ BOT_TOKEN not set, bot disabled')
+      fastify.log.warn('BOT_TOKEN not set, bot disabled')
     }
 
     // Start event scheduler
@@ -186,12 +226,11 @@ async function start() {
 
     // Start server
     await fastify.listen({ port: PORT, host: HOST })
-    console.log(`🚀 Server running at http://${HOST}:${PORT}`)
-    console.log(`📱 Frontend URL: ${FRONTEND_URL}`)
+    fastify.log.info({ port: PORT, host: HOST, frontend: FRONTEND_URL }, 'Server started')
 
     // Graceful shutdown
     const shutdown = async (signal: string) => {
-      console.log(`\n${signal} received, shutting down...`)
+      fastify.log.info({ signal }, 'Shutting down server')
       SchedulerService.stop()
       await fastify.close()
       process.exit(0)
@@ -201,7 +240,7 @@ async function start() {
     process.on('SIGINT', () => shutdown('SIGINT'))
 
   } catch (error) {
-    console.error('❌ Failed to start server:', error)
+    fastify.log.error({ error }, 'Failed to start server')
     process.exit(1)
   }
 }

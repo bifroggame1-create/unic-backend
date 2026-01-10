@@ -115,7 +115,7 @@ export async function channelRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: 'Invalid channel ID format' })
     }
 
-    const channel = await Channel.findById(id)
+    const channel = await Channel.findById(id).lean()
     if (!channel) {
       return reply.status(404).send({ error: 'Channel not found' })
     }

@@ -94,4 +94,20 @@ EventSchema.index({ status: 1, endsAt: 1 })
 // Index for user's events dashboard queries
 EventSchema.index({ ownerId: 1, status: 1, createdAt: -1 })
 
+// Validate dates before save
+EventSchema.pre('save', function() {
+  if (this.startsAt && this.endsAt && this.startsAt >= this.endsAt) {
+    throw new Error('Event start date must be before end date')
+  }
+})
+
+// TTL index: auto-delete completed events after 30 days
+EventSchema.index(
+  { status: 1, updatedAt: 1 },
+  {
+    partialFilterExpression: { status: 'completed' },
+    expireAfterSeconds: 2592000 // 30 days
+  }
+)
+
 export const Event = mongoose.model<IEvent>('Event', EventSchema)

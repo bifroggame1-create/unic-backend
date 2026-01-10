@@ -3,6 +3,7 @@ import { Event, User, UserEventStats } from '../models'
 import { verifyChannelAdmin, verifyBotAdmin, sendEventPost } from '../services/telegram'
 import { PaymentService } from '../services/payment'
 import { validateEventId, isValidTelegramId, isValidChannelId, isValidDuration, isValidActivityType, isValidWinnersCount, sanitizeString, isValidObjectId } from '../utils/validation'
+import { sendError, ErrorMessages } from '../utils/errors'
 
 interface CreateEventBody {
   channelId: number
@@ -65,13 +66,13 @@ export async function eventRoutes(fastify: FastifyInstance) {
   fastify.get('/events', async (request: FastifyRequest, reply: FastifyReply) => {
     const telegramId = request.headers['x-telegram-id']
     if (!telegramId) {
-      return reply.status(401).send({ error: 'Unauthorized' })
+      return sendError(reply, 401, ErrorMessages.UNAUTHORIZED)
     }
 
     // Validate Telegram ID
     const userId = Number(telegramId)
     if (!isValidTelegramId(userId)) {
-      return reply.status(401).send({ error: 'Invalid Telegram ID' })
+      return sendError(reply, 401, ErrorMessages.INVALID_TELEGRAM_ID)
     }
 
     const events = await Event.find({ ownerId: userId })
@@ -85,32 +86,32 @@ export async function eventRoutes(fastify: FastifyInstance) {
   fastify.post('/events', async (request: FastifyRequest<{ Body: CreateEventBody }>, reply: FastifyReply) => {
     const telegramId = request.headers['x-telegram-id']
     if (!telegramId) {
-      return reply.status(401).send({ error: 'Unauthorized' })
+      return sendError(reply, 401, ErrorMessages.UNAUTHORIZED)
     }
 
     // Validate Telegram ID
     const userId = Number(telegramId)
     if (!isValidTelegramId(userId)) {
-      return reply.status(401).send({ error: 'Invalid Telegram ID' })
+      return sendError(reply, 401, ErrorMessages.INVALID_TELEGRAM_ID)
     }
 
     const { channelId, duration, activityType, winnersCount, prizes, packageId, title, boostsEnabled } = request.body
 
     // Validate required fields
     if (!channelId || !isValidChannelId(channelId)) {
-      return reply.status(400).send({ error: 'Invalid channelId' })
+      return sendError(reply, 400, ErrorMessages.INVALID_CHANNEL_ID)
     }
 
     if (!duration || !isValidDuration(duration)) {
-      return reply.status(400).send({ error: 'Invalid duration. Must be 24h, 48h, 72h, or 7d' })
+      return sendError(reply, 400, ErrorMessages.INVALID_DURATION)
     }
 
     if (!activityType || !isValidActivityType(activityType)) {
-      return reply.status(400).send({ error: 'Invalid activityType. Must be reactions, comments, or all' })
+      return sendError(reply, 400, ErrorMessages.INVALID_ACTIVITY_TYPE)
     }
 
     if (!winnersCount || !isValidWinnersCount(winnersCount)) {
-      return reply.status(400).send({ error: 'Invalid winnersCount. Must be between 1 and 100' })
+      return sendError(reply, 400, ErrorMessages.INVALID_WINNERS_COUNT)
     }
 
     // Sanitize optional title
@@ -119,19 +120,19 @@ export async function eventRoutes(fastify: FastifyInstance) {
     // Verify user is channel admin
     const isAdmin = await verifyChannelAdmin(channelId, userId)
     if (!isAdmin) {
-      return reply.status(403).send({ error: 'You must be an admin of this channel' })
+      return sendError(reply, 403, ErrorMessages.NOT_CHANNEL_ADMIN)
     }
 
     // Verify bot is admin in channel
     const botIsAdmin = await verifyBotAdmin(channelId)
     if (!botIsAdmin) {
-      return reply.status(400).send({ error: 'Please add the bot as admin to your channel with required permissions' })
+      return sendError(reply, 400, ErrorMessages.BAD_REQUEST, 'Please add the bot as admin to your channel with required permissions')
     }
 
     // Check user's plan limits
     const user = await User.findOne({ telegramId: userId })
     if (!user) {
-      return reply.status(404).send({ error: 'User not found' })
+      return sendError(reply, 404, ErrorMessages.USER_NOT_FOUND)
     }
 
     // Check event limits based on plan (skip for admins)
@@ -145,7 +146,7 @@ export async function eventRoutes(fastify: FastifyInstance) {
       }
       const limit = limits[user.plan]
       if (limit !== -1 && user.eventsThisMonth >= limit) {
-        return reply.status(403).send({ error: 'Event limit reached. Upgrade your plan.' })
+        return sendError(reply, 403, ErrorMessages.EVENT_LIMIT_REACHED)
       }
     }
 
@@ -403,23 +404,23 @@ export async function eventRoutes(fastify: FastifyInstance) {
     }
 
     try {
-      const event = await Event.findById(id)
+      const event = await Event.findById(id).lean()
       if (!event) {
-        return reply.status(404).send({ error: 'Event not found' })
+        return sendError(reply, 404, ErrorMessages.EVENT_NOT_FOUND)
       }
 
       if (event.status !== 'active') {
-        return reply.status(400).send({ error: 'Event is not active' })
+        return sendError(reply, 400, ErrorMessages.EVENT_NOT_ACTIVE)
       }
 
       // Check if user already joined (UserEventStats exists)
       const existingStats = await UserEventStats.findOne({
         userId,
         eventId: event._id
-      })
+      }).lean()
 
       if (existingStats) {
-        return reply.status(400).send({ error: 'Already joined this event' })
+        return sendError(reply, 400, ErrorMessages.ALREADY_JOINED)
       }
 
       // Create UserEventStats entry (user has joined)
