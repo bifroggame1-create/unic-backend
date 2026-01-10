@@ -339,4 +339,61 @@ export class PointsService {
       giftSent: false
     }))
   }
+
+  /**
+   * Select Second Chance winners from entries
+   * Randomly picks winners from users who bought Second Chance but didn't win
+   */
+  static async selectSecondChanceWinners(
+    eventId: Types.ObjectId | string,
+    count: number = 3
+  ): Promise<any[]> {
+    const { SecondChanceEntry, User } = await import('../models')
+
+    // Get all Second Chance entries that haven't won yet
+    const entries = await SecondChanceEntry.aggregate([
+      {
+        $match: {
+          eventId: new Types.ObjectId(eventId.toString()),
+          isWinner: false
+        }
+      },
+      // Random sample
+      { $sample: { size: count } },
+      // Lookup user info
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'userId',
+          foreignField: 'telegramId',
+          as: 'user'
+        }
+      },
+      { $unwind: { path: '$user', preserveNullAndEmptyArrays: true } },
+      {
+        $project: {
+          telegramId: '$userId',
+          username: '$user.username',
+          entryId: '$_id'
+        }
+      }
+    ])
+
+    // Mark these entries as winners
+    const entryIds = entries.map(e => e.entryId)
+    if (entryIds.length > 0) {
+      await SecondChanceEntry.updateMany(
+        { _id: { $in: entryIds } },
+        { $set: { isWinner: true } }
+      )
+    }
+
+    return entries.map((entry, index) => ({
+      telegramId: entry.telegramId,
+      username: entry.username,
+      points: 0, // Second Chance winners have no points
+      position: index + 1,
+      giftSent: false
+    }))
+  }
 }

@@ -132,8 +132,75 @@ export class SchedulerService {
       }
 
       await event.save()
+
+      // Schedule Second Chance draw for 1 hour later
+      setTimeout(async () => {
+        await this.runSecondChanceDraw(eventId)
+      }, 60 * 60 * 1000) // 1 hour
+
     } catch (error) {
       console.error(`Failed to complete event ${eventId}:`, error)
+    }
+  }
+
+  /**
+   * Run Second Chance draw for completed event
+   */
+  private static async runSecondChanceDraw(eventId: string) {
+    try {
+      console.log(`🎲 Running Second Chance draw for event ${eventId}...`)
+
+      const event = await Event.findById(eventId)
+      if (!event || event.status !== 'completed') {
+        console.log(`Event ${eventId} is not in completed status, skipping Second Chance`)
+        return
+      }
+
+      // Select Second Chance winners (up to 3)
+      const secondChanceWinners = await PointsService.selectSecondChanceWinners(eventId, 3)
+
+      if (secondChanceWinners.length === 0) {
+        console.log(`No Second Chance entries for event ${eventId}`)
+        return
+      }
+
+      console.log(`🍀 Selected ${secondChanceWinners.length} Second Chance winners`)
+
+      // Add Second Chance winners to event
+      const newWinners = secondChanceWinners.map((winner, index) => ({
+        telegramId: winner.telegramId,
+        username: winner.username,
+        points: 0,
+        position: event.winners.length + index + 1,
+        giftId: event.prizes[event.winners.length + index]?.giftId || 'delicious_cake',
+        giftSent: false,
+      }))
+
+      event.winners.push(...newWinners)
+      await event.save()
+
+      // Send gifts to Second Chance winners
+      const giftsToSend = newWinners.map((w) => ({
+        telegramId: w.telegramId,
+        giftId: w.giftId,
+        position: w.position,
+      }))
+
+      const result = await GiftsService.sendGiftsToWinners(giftsToSend)
+
+      console.log(`✅ Second Chance completed: ${result.success} gifts sent, ${result.failed} failed`)
+
+      // Update gift sent status
+      const startIndex = event.winners.length - newWinners.length
+      for (let i = 0; i < newWinners.length; i++) {
+        if (i < result.success) {
+          event.winners[startIndex + i].giftSent = true
+        }
+      }
+
+      await event.save()
+    } catch (error) {
+      console.error(`Failed to run Second Chance draw for event ${eventId}:`, error)
     }
   }
 

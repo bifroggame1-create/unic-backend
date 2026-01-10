@@ -196,19 +196,50 @@ export async function monetizationRoutes(fastify: FastifyInstance) {
         return reply.status(404).send({ error: 'Event not found' })
       }
 
+      if (event.status !== 'completed') {
+        return reply.status(400).send({ error: 'Event must be completed to use Second Chance' })
+      }
+
       // Verify payment
       const payment = await PaymentService.getPayment(paymentId)
       if (!payment || payment.status !== 'success' || payment.userId !== userId) {
         return reply.status(400).send({ error: 'Payment not verified' })
       }
 
-      // Store second chance entry (simplified - in real app would be separate collection)
-      // Real implementation would need second chance draw system
+      if (payment.type !== 'second_chance') {
+        return reply.status(400).send({ error: 'Invalid payment type' })
+      }
 
-      return reply.send({
-        success: true,
-        message: 'Second Chance активирован! Дополнительный розыгрыш будет проведён в ближайшее время.',
-      })
+      // Check if user is already a winner
+      const isWinner = event.winners.some(w => w.telegramId === userId)
+      if (isWinner) {
+        return reply.status(400).send({ error: 'You already won this event' })
+      }
+
+      // Create Second Chance entry
+      const { SecondChanceEntry } = await import('../models')
+
+      try {
+        await SecondChanceEntry.create({
+          userId,
+          eventId: event._id,
+          paymentId,
+          isWinner: false
+        })
+
+        console.log(`✅ Second Chance entry created for user ${userId} in event ${id}`)
+
+        return reply.send({
+          success: true,
+          message: 'Second Chance активирован! Дополнительный розыгрыш будет проведён в ближайшее время.',
+        })
+      } catch (error: any) {
+        // Handle duplicate entry
+        if (error.code === 11000) {
+          return reply.status(400).send({ error: 'You already have a Second Chance entry for this event' })
+        }
+        throw error
+      }
     }
   )
 
