@@ -33,6 +33,7 @@ export class PointsService {
 
     // Get or create user stats
     let stats = await UserEventStats.findOne({ userId, eventId })
+    let isNewParticipant = false
 
     if (!stats) {
       stats = new UserEventStats({
@@ -45,6 +46,7 @@ export class PointsService {
         boostMultiplier: 1.0,
         lastActivityAt: new Date()
       })
+      isNewParticipant = true
     }
 
     // Check for active boost
@@ -63,10 +65,13 @@ export class PointsService {
 
     await stats.save()
 
-    // Update event counters
-    await Event.findByIdAndUpdate(eventId, {
-      $inc: { totalReactions: 1 }
-    })
+    // Update event counters (increment participants if new)
+    const updateQuery: any = { $inc: { totalReactions: 1 } }
+    if (isNewParticipant) {
+      updateQuery.$inc.participantsCount = 1
+    }
+
+    await Event.findByIdAndUpdate(eventId, updateQuery)
 
     return earnedPoints
   }
@@ -105,6 +110,7 @@ export class PointsService {
 
     // Get or create user stats
     let stats = await UserEventStats.findOne({ userId, eventId })
+    let isNewParticipant = false
 
     if (!stats) {
       stats = new UserEventStats({
@@ -117,6 +123,7 @@ export class PointsService {
         boostMultiplier: 1.0,
         lastActivityAt: new Date()
       })
+      isNewParticipant = true
     }
 
     // Check for active boost
@@ -139,10 +146,13 @@ export class PointsService {
 
     await stats.save()
 
-    // Update event counters
-    await Event.findByIdAndUpdate(eventId, {
-      $inc: { totalComments: 1 }
-    })
+    // Update event counters (increment participants if new)
+    const updateQuery: any = { $inc: { totalComments: 1 } }
+    if (isNewParticipant) {
+      updateQuery.$inc.participantsCount = 1
+    }
+
+    await Event.findByIdAndUpdate(eventId, updateQuery)
 
     return earnedPoints
   }
