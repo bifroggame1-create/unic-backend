@@ -125,7 +125,7 @@ export async function eventRoutes(fastify: FastifyInstance) {
     // Verify bot is admin in channel
     const botIsAdmin = await verifyBotAdmin(channelId)
     if (!botIsAdmin) {
-      return reply.status(400).send({ error: 'Please add @UnicBot as admin to your channel first' })
+      return reply.status(400).send({ error: 'Please add the bot as admin to your channel with required permissions' })
     }
 
     // Check user's plan limits

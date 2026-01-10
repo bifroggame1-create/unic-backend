@@ -43,9 +43,14 @@ bot.command('start', async (ctx) => {
 // Callback: How it works
 bot.callbackQuery('how_it_works', async (ctx) => {
   await ctx.answerCallbackQuery()
+
+  // Get bot username dynamically
+  const botInfo = await bot.api.getMe()
+  const botUsername = botInfo.username
+
   await ctx.reply(
     `📖 **How UNIC Works**\n\n` +
-    `1️⃣ Add @UnicBot as admin to your channel\n` +
+    `1️⃣ Add @${botUsername} as admin to your channel\n` +
     `2️⃣ Create an event in the app\n` +
     `3️⃣ Publish the event post\n` +
     `4️⃣ Your subscribers compete for points\n` +

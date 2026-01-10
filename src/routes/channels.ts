@@ -62,7 +62,7 @@ export async function channelRoutes(fastify: FastifyInstance) {
     const info = await getChannelInfo(channelIdentifier)
 
     if (!info) {
-      return reply.status(404).send({ error: 'Channel not found. Make sure @UnicBot is added as admin.' })
+      return reply.status(404).send({ error: 'Channel not found. Make sure the bot is added as admin.' })
     }
 
     // Verify user is channel admin
@@ -74,7 +74,7 @@ export async function channelRoutes(fastify: FastifyInstance) {
     // Verify bot is admin
     const botIsAdmin = await verifyBotAdmin(info.id)
     if (!botIsAdmin) {
-      return reply.status(400).send({ error: 'Please add @UnicBot as admin to your channel first' })
+      return reply.status(400).send({ error: 'Please add the bot as admin to your channel with required permissions' })
     }
 
     // Upsert channel

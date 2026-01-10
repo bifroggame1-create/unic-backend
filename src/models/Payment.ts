@@ -3,7 +3,7 @@ import mongoose, { Schema, Document, Types } from 'mongoose'
 export interface IPayment extends Document {
   userId: number
   eventId?: Types.ObjectId
-  type: 'event_package' | 'boost'
+  type: 'event_package' | 'boost' | 'plan_upgrade' | 'second_chance'
   amount: number
   currency: 'RUB' | 'STARS'
   status: 'pending' | 'success' | 'failed' | 'refunded'
@@ -18,7 +18,7 @@ const PaymentSchema = new Schema<IPayment>({
   eventId: { type: Schema.Types.ObjectId, ref: 'Event' },
   type: {
     type: String,
-    enum: ['event_package', 'boost'],
+    enum: ['event_package', 'boost', 'plan_upgrade', 'second_chance'],
     required: true,
     index: true
   },

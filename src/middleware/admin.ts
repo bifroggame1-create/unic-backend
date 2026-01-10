@@ -3,9 +3,9 @@ import { User } from '../models'
 
 /**
  * Admin users - full access without limits
- * Usernames: @cheffofgang, @privetlefortovo, @v_liza_a
+ * Usernames: @cheffofgang, @privetlefortovo, @onlyonhigh, @v_liza_a
  */
-const ADMIN_USERNAMES = ['cheffofgang', 'privetlefortovo', 'v_liza_a']
+const ADMIN_USERNAMES = ['cheffofgang', 'privetlefortovo', 'onlyonhigh', 'v_liza_a']
 
 /**
  * Check if user is admin by username
