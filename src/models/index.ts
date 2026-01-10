@@ -1,7 +1,6 @@
 export { User, IUser } from './User'
 export { Channel, IChannel } from './Channel'
 export { Event, IEvent } from './Event'
-export { Participation, IParticipation } from './Participation'
 export { UserEventStats, IUserEventStats } from './UserEventStats'
 export { Boost, IBoost } from './Boost'
 export { Payment, IPayment } from './Payment'

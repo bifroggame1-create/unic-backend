@@ -1,5 +1,5 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
-import { User } from '../models'
+import { User, Event, UserEventStats } from '../models'
 import { grantAdminPrivileges } from '../middleware/admin'
 
 interface UpdateUserBody {
@@ -16,19 +16,53 @@ export async function userRoutes(fastify: FastifyInstance) {
       return reply.status(401).send({ error: 'Unauthorized' })
     }
 
-    let user = await User.findOne({ telegramId: Number(telegramId) }).lean()
+    // Get username and name from Telegram headers
+    const username = request.headers['x-telegram-username'] as string | undefined
+    const firstName = request.headers['x-telegram-firstname'] as string | undefined
+    const lastName = request.headers['x-telegram-lastname'] as string | undefined
+
+    let user = await User.findOne({ telegramId: Number(telegramId) })
 
     if (!user) {
-      // Create user if doesn't exist
+      // Create user if doesn't exist with Telegram data
       const newUser = new User({
         telegramId: Number(telegramId),
+        username: username || undefined,
+        firstName: firstName || undefined,
+        lastName: lastName || undefined,
       })
       await grantAdminPrivileges(newUser)
       await newUser.save()
-      user = newUser.toObject()
+      user = newUser
+    } else {
+      // Update username/name if changed
+      let updated = false
+      if (username && user.username !== username) {
+        user.username = username
+        updated = true
+      }
+      if (firstName && user.firstName !== firstName) {
+        user.firstName = firstName
+        updated = true
+      }
+      if (lastName && user.lastName !== lastName) {
+        user.lastName = lastName
+        updated = true
+      }
+
+      // Re-check admin privileges on every request
+      const wasAdmin = user.isAdmin
+      await grantAdminPrivileges(user)
+      if (user.isAdmin !== wasAdmin || user.plan !== 'premium' && user.isAdmin) {
+        updated = true
+      }
+
+      if (updated) {
+        await user.save()
+      }
     }
 
-    return { user }
+    return { user: user.toObject() }
   })
 
   // Update user
@@ -63,15 +97,40 @@ export async function userRoutes(fastify: FastifyInstance) {
       return reply.status(401).send({ error: 'Unauthorized' })
     }
 
-    let user = await User.findOne({ telegramId: Number(telegramId) }).lean()
+    // Get username and name from Telegram headers
+    const username = request.headers['x-telegram-username'] as string | undefined
+    const firstName = request.headers['x-telegram-firstname'] as string | undefined
+    const lastName = request.headers['x-telegram-lastname'] as string | undefined
+
+    let user = await User.findOne({ telegramId: Number(telegramId) })
     if (!user) {
-      // Create user if doesn't exist
+      // Create user if doesn't exist with Telegram data
       const newUser = new User({
         telegramId: Number(telegramId),
+        username: username || undefined,
+        firstName: firstName || undefined,
+        lastName: lastName || undefined,
       })
       await grantAdminPrivileges(newUser)
       await newUser.save()
-      user = newUser.toObject()
+      user = newUser
+    } else {
+      // Update and re-check admin privileges
+      let updated = false
+      if (username && user.username !== username) {
+        user.username = username
+        updated = true
+      }
+
+      const wasAdmin = user.isAdmin
+      await grantAdminPrivileges(user)
+      if (user.isAdmin !== wasAdmin || (user.isAdmin && user.plan !== 'premium')) {
+        updated = true
+      }
+
+      if (updated) {
+        await user.save()
+      }
     }
 
     // Get plan limits
@@ -91,6 +150,153 @@ export async function userRoutes(fastify: FastifyInstance) {
       referralsCount: user.referralsCount,
       referralCode: user.referralCode,
       limits: limits[user.plan],
+    }
+  })
+
+  // Get dashboard statistics
+  fastify.get('/users/me/dashboard', async (request: FastifyRequest, reply: FastifyReply) => {
+    const telegramId = request.headers['x-telegram-id']
+    if (!telegramId) {
+      return reply.status(401).send({ error: 'Unauthorized' })
+    }
+
+    const userId = Number(telegramId)
+    const user = await User.findOne({ telegramId: userId })
+
+    if (!user) {
+      return reply.status(404).send({ error: 'User not found' })
+    }
+
+    // Get all user's events
+    const events = await Event.find({ ownerId: userId }).lean()
+
+    // Calculate total participants across all events
+    const totalParticipants = events.reduce((sum, event) => sum + (event.participantsCount || 0), 0)
+
+    // Calculate total engagement (reactions + comments) across all events
+    const totalReactions = events.reduce((sum, event) => sum + (event.totalReactions || 0), 0)
+    const totalComments = events.reduce((sum, event) => sum + (event.totalComments || 0), 0)
+    const totalEngagement = totalReactions + totalComments
+
+    // Calculate engagement rate (interactions per participant)
+    const engagementRate = totalParticipants > 0
+      ? Math.round((totalEngagement / totalParticipants) * 100)
+      : 0
+
+    // Get active events count
+    const activeEvents = events.filter(e => e.status === 'active').length
+
+    return {
+      eventsCreated: user.eventsCreated,
+      activeEvents,
+      totalParticipants,
+      engagementRate,
+      totalReactions,
+      totalComments,
+      plan: user.plan,
+      referralsCount: user.referralsCount,
+    }
+  })
+
+  // Create plan upgrade invoice
+  fastify.post('/users/plan-invoice', async (request: FastifyRequest<{ Body: { planId: string } }>, reply: FastifyReply) => {
+    const telegramId = request.headers['x-telegram-id']
+    if (!telegramId) {
+      return reply.status(401).send({ error: 'Unauthorized' })
+    }
+
+    const { planId } = request.body
+
+    // Validate plan ID
+    const planPrices: Record<string, number> = {
+      trial: 100,      // 100 Stars
+      basic: 500,      // 500 Stars
+      advanced: 2000,  // 2000 Stars
+      premium: 5000,   // 5000 Stars
+    }
+
+    if (!planId || !planPrices[planId]) {
+      return reply.status(400).send({ error: 'Invalid plan ID' })
+    }
+
+    const userId = Number(telegramId)
+    const amount = planPrices[planId]
+
+    try {
+      const { PaymentService } = await import('../services/payment')
+      const { invoiceLink, paymentId } = await PaymentService.createPlanUpgradeInvoice(
+        userId,
+        planId,
+        amount
+      )
+
+      return {
+        invoiceLink,
+        paymentId,
+        amount,
+        planId,
+      }
+    } catch (error: any) {
+      console.error('Error creating plan invoice:', error)
+      return reply.status(500).send({ error: 'Failed to create invoice' })
+    }
+  })
+
+  // Upgrade user plan
+  fastify.post('/users/upgrade', async (request: FastifyRequest<{ Body: { planId: string; paymentId: string } }>, reply: FastifyReply) => {
+    const telegramId = request.headers['x-telegram-id']
+    if (!telegramId) {
+      return reply.status(401).send({ error: 'Unauthorized' })
+    }
+
+    const { planId, paymentId } = request.body
+
+    // Validate plan ID
+    const validPlans = ['trial', 'basic', 'advanced', 'premium']
+    if (!planId || !validPlans.includes(planId)) {
+      return reply.status(400).send({ error: 'Invalid plan ID' })
+    }
+
+    // Validate payment ID
+    if (!paymentId || typeof paymentId !== 'string') {
+      return reply.status(400).send({ error: 'Invalid payment ID' })
+    }
+
+    const user = await User.findOne({ telegramId: Number(telegramId) })
+    if (!user) {
+      return reply.status(404).send({ error: 'User not found' })
+    }
+
+    // Verify payment
+    const { PaymentService } = await import('../services/payment')
+    const payment = await PaymentService.getPayment(paymentId)
+
+    if (!payment) {
+      return reply.status(404).send({ error: 'Payment not found' })
+    }
+
+    if (payment.status !== 'success') {
+      return reply.status(400).send({ error: 'Payment not completed' })
+    }
+
+    if (payment.userId !== user.telegramId) {
+      return reply.status(403).send({ error: 'Unauthorized payment' })
+    }
+
+    // Calculate plan expiry (30 days from now)
+    const expiryDate = new Date()
+    expiryDate.setDate(expiryDate.getDate() + 30)
+
+    // Update user plan
+    user.plan = planId as 'trial' | 'basic' | 'advanced' | 'premium'
+    user.planExpiresAt = expiryDate
+    await user.save()
+
+    return {
+      success: true,
+      plan: user.plan,
+      planExpiresAt: user.planExpiresAt,
+      message: `Successfully upgraded to ${planId} plan`,
     }
   })
 

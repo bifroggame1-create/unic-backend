@@ -109,6 +109,69 @@ export class PaymentService {
   }
 
   /**
+   * Create Telegram Stars invoice for plan upgrade
+   */
+  static async createPlanUpgradeInvoice(
+    userId: number,
+    planId: string,
+    amount: number
+  ): Promise<{ invoiceLink: string; paymentId: string }> {
+    const plans: Record<string, { title: string; description: string }> = {
+      trial: {
+        title: 'Trial Plan',
+        description: '3 events/month • 1000 participants',
+      },
+      basic: {
+        title: 'Basic Plan',
+        description: '10 events/month • 5000 participants',
+      },
+      advanced: {
+        title: 'Advanced Plan',
+        description: 'Unlimited events • 50000 participants',
+      },
+      premium: {
+        title: 'Premium Plan',
+        description: 'Unlimited events • Unlimited participants',
+      },
+    }
+
+    const plan = plans[planId] || plans.basic
+
+    // Create payment record
+    const payment = new Payment({
+      userId,
+      type: 'plan_upgrade',
+      amount,
+      currency: 'STARS',
+      status: 'pending',
+      metadata: { planId },
+    })
+
+    await payment.save()
+
+    try {
+      // Create Telegram Stars invoice
+      const invoiceLink = await bot.api.createInvoiceLink(
+        plan.title,
+        plan.description,
+        payment._id.toString(),
+        '',
+        'XTR',
+        [{ label: plan.title, amount }]
+      )
+
+      return {
+        invoiceLink,
+        paymentId: payment._id.toString(),
+      }
+    } catch (error) {
+      payment.status = 'failed'
+      await payment.save()
+      throw error
+    }
+  }
+
+  /**
    * Create Telegram Stars invoice for event package
    */
   static async createEventPackageInvoice(

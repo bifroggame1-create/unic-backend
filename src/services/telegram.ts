@@ -1,6 +1,5 @@
 import { Bot, Context } from 'grammy'
 import { Event, Channel, User } from '../models'
-import { recordActivity } from './scoring'
 import { PointsService } from './points'
 import { PaymentService } from './payment'
 
@@ -84,13 +83,6 @@ export async function handleChannelReaction(
 
   console.log(`✅ User ${userId} earned ${earnedPoints} points for reaction`)
 
-  // Legacy: also record activity for backwards compat
-  const points = await recordActivity(event._id, {
-    telegramId: userId,
-    username,
-    type: 'reaction',
-  })
-
   return { eventId: event._id, points: earnedPoints }
 }
 
@@ -120,14 +112,6 @@ export async function handleChannelComment(
   )
 
   console.log(`✅ User ${userId} earned ${earnedPoints} points for ${isReply ? 'reply' : 'comment'}`)
-
-  // Legacy: also record activity for backwards compat
-  const points = await recordActivity(event._id, {
-    telegramId: userId,
-    username,
-    firstName,
-    type: isReply ? 'reply' : 'comment',
-  })
 
   return { eventId: event._id, points: earnedPoints }
 }
