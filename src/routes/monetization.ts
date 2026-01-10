@@ -101,9 +101,16 @@ export async function monetizationRoutes(fastify: FastifyInstance) {
         return reply.status(400).send({ error: 'Payment not verified' })
       }
 
-      // Store boost metadata in event (simplified - in real app would be separate collection)
-      // For MVP, just track that boost was purchased
-      // Real implementation would need boost tracking per user
+      // Apply boost using PointsService
+      const { PointsService } = await import('../services/points')
+      await PointsService.applyBoost(
+        userId,
+        id,
+        'x1.5_forever',
+        payment.amount
+      )
+
+      console.log(`✅ Boost activated for user ${userId} in event ${id}`)
 
       return reply.send({
         success: true,
