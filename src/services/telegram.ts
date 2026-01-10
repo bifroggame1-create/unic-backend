@@ -70,6 +70,27 @@ export async function handleChannelReaction(
   username?: string,
   messageId?: number
 ) {
+  const { ProcessedActivity } = await import('../models')
+
+  // Check if already processed (deduplication)
+  if (messageId) {
+    try {
+      await ProcessedActivity.create({
+        userId,
+        channelId,
+        messageId,
+        activityType: 'reaction',
+      })
+    } catch (error: any) {
+      // Duplicate key error - already processed
+      if (error.code === 11000) {
+        console.log(`⚠️ Duplicate reaction detected for user ${userId} on message ${messageId}`)
+        return null
+      }
+      throw error
+    }
+  }
+
   // Find active event for this channel
   const event = await Event.findOne({
     channelId,
@@ -101,6 +122,27 @@ export async function handleChannelComment(
   isReply: boolean = false,
   messageId?: number
 ) {
+  const { ProcessedActivity } = await import('../models')
+
+  // Check if already processed (deduplication)
+  if (messageId) {
+    try {
+      await ProcessedActivity.create({
+        userId,
+        channelId,
+        messageId,
+        activityType: 'comment',
+      })
+    } catch (error: any) {
+      // Duplicate key error - already processed
+      if (error.code === 11000) {
+        console.log(`⚠️ Duplicate comment detected for user ${userId} on message ${messageId}`)
+        return null
+      }
+      throw error
+    }
+  }
+
   const event = await Event.findOne({
     channelId,
     status: 'active',
