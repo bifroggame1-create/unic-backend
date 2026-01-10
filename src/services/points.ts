@@ -1,5 +1,6 @@
 import { UserEventStats, Boost, Event } from '../models'
 import { Types } from 'mongoose'
+import { validateComment } from '../utils/commentValidation'
 
 export class PointsService {
   // Points values
@@ -77,8 +78,16 @@ export class PointsService {
     userId: number,
     eventId: Types.ObjectId | string,
     messageId: number,
+    commentText: string,
     isReply: boolean = false
   ): Promise<number> {
+    // Validate comment quality (anti-spam)
+    const validation = validateComment(commentText)
+    if (!validation.isValid) {
+      console.log(`❌ Comment rejected for user ${userId}: ${validation.reason}`)
+      throw new Error(`Invalid comment: ${validation.reason}`)
+    }
+
     // Check event is active
     const event = await Event.findOne({
       _id: eventId,

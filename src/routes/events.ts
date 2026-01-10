@@ -1,5 +1,5 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
-import { Event, User } from '../models'
+import { Event, User, UserEventStats } from '../models'
 import { verifyChannelAdmin, verifyBotAdmin, sendEventPost } from '../services/telegram'
 import { PaymentService } from '../services/payment'
 import { validateEventId, isValidTelegramId, isValidChannelId, isValidDuration, isValidActivityType, isValidWinnersCount, sanitizeString, isValidObjectId } from '../utils/validation'
@@ -367,6 +367,82 @@ export async function eventRoutes(fastify: FastifyInstance) {
     } catch (error: any) {
       console.error('Error completing event:', error)
       return reply.status(500).send({ error: error.message || 'Failed to complete event' })
+    }
+  })
+
+  // Join event - user explicitly opts in to participate
+  fastify.post('/events/:id/join', async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+    const telegramId = request.headers['x-telegram-id']
+    if (!telegramId) {
+      return reply.status(401).send({ error: 'Unauthorized' })
+    }
+
+    // Validate Telegram ID
+    const userId = Number(telegramId)
+    if (!isValidTelegramId(userId)) {
+      return reply.status(401).send({ error: 'Invalid Telegram ID' })
+    }
+
+    const { id } = request.params
+
+    // Validate event ID
+    const validation = validateEventId(id)
+    if (!validation.valid) {
+      return reply.status(400).send({ error: validation.error })
+    }
+
+    try {
+      const event = await Event.findById(id)
+      if (!event) {
+        return reply.status(404).send({ error: 'Event not found' })
+      }
+
+      if (event.status !== 'active') {
+        return reply.status(400).send({ error: 'Event is not active' })
+      }
+
+      // Check if user already joined (UserEventStats exists)
+      const existingStats = await UserEventStats.findOne({
+        userId,
+        eventId: event._id
+      })
+
+      if (existingStats) {
+        return reply.status(400).send({ error: 'Already joined this event' })
+      }
+
+      // Create UserEventStats entry (user has joined)
+      await UserEventStats.create({
+        userId,
+        eventId: event._id,
+        points: 0,
+        reactionsCount: 0,
+        commentsCount: 0,
+        repliesCount: 0,
+        boostMultiplier: 1.0,
+        lastActivityAt: new Date()
+      })
+
+      // Increment event participants count
+      await Event.findByIdAndUpdate(event._id, {
+        $inc: { participantsCount: 1 }
+      })
+
+      console.log(`✅ User ${userId} joined event ${id}`)
+
+      return reply.send({
+        success: true,
+        message: 'Successfully joined the event! Subscribe to the channel and start earning points.'
+      })
+    } catch (error: any) {
+      console.error('Error joining event:', error)
+
+      // Handle duplicate key error (race condition)
+      if (error.code === 11000) {
+        return reply.status(400).send({ error: 'Already joined this event' })
+      }
+
+      return reply.status(500).send({ error: 'Failed to join event' })
     }
   })
 }

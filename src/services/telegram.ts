@@ -90,6 +90,7 @@ export async function handleChannelReaction(
 export async function handleChannelComment(
   channelId: number,
   userId: number,
+  commentText: string,
   username?: string,
   firstName?: string,
   isReply: boolean = false,
@@ -103,17 +104,23 @@ export async function handleChannelComment(
 
   if (!event) return null
 
-  // Award points using PointsService
-  const earnedPoints = await PointsService.handleComment(
-    userId,
-    event._id,
-    messageId || 0,
-    isReply
-  )
+  // Award points using PointsService (with validation)
+  try {
+    const earnedPoints = await PointsService.handleComment(
+      userId,
+      event._id,
+      messageId || 0,
+      commentText,
+      isReply
+    )
 
-  console.log(`✅ User ${userId} earned ${earnedPoints} points for ${isReply ? 'reply' : 'comment'}`)
-
-  return { eventId: event._id, points: earnedPoints }
+    console.log(`✅ User ${userId} earned ${earnedPoints} points for ${isReply ? 'reply' : 'comment'}`)
+    return { eventId: event._id, points: earnedPoints }
+  } catch (error: any) {
+    // Log spam/invalid comments but don't throw
+    console.log(`⚠️ Comment rejected: ${error.message}`)
+    return null
+  }
 }
 
 // Verify channel admin rights

@@ -122,10 +122,11 @@ async function start() {
               is_reply: isReply,
             })
 
-            if (channelId && msg.from) {
+            if (channelId && msg.from && msg.text) {
               await handleChannelComment(
                 channelId,
                 msg.from.id,
+                msg.text,
                 msg.from.username,
                 msg.from.first_name,
                 isReply,
