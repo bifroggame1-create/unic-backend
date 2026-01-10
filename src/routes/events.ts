@@ -166,10 +166,18 @@ export async function eventRoutes(fastify: FastifyInstance) {
     await event.save()
 
     // Update user stats and promote to admin role
-    await User.findByIdAndUpdate(user._id, {
+    const updateFields: any = {
       $inc: { eventsCreated: 1, eventsThisMonth: 1 },
       $set: { userRole: 'admin' } // Automatically become admin when creating events
-    })
+    }
+
+    // Mark demo as used if this is first event on free plan
+    if (user.plan === 'free' && !user.hasUsedDemo) {
+      updateFields.$set.hasUsedDemo = true
+      console.log(`✅ User ${userId} used demo event (free plan)`)
+    }
+
+    await User.findByIdAndUpdate(user._id, updateFields)
 
     console.log(`✅ User ${userId} created event and promoted to admin role`)
 
