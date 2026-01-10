@@ -171,11 +171,40 @@ export async function userRoutes(fastify: FastifyInstance) {
       return reply.status(401).send({ error: 'Unauthorized' })
     }
 
+    // Get username and name from Telegram headers
+    const username = request.headers['x-telegram-username'] as string | undefined
+    const firstName = request.headers['x-telegram-firstname'] as string | undefined
+    const lastName = request.headers['x-telegram-lastname'] as string | undefined
+
     const userId = Number(telegramId)
-    const user = await User.findOne({ telegramId: userId })
+    let user = await User.findOne({ telegramId: userId })
 
     if (!user) {
-      return reply.status(404).send({ error: 'User not found' })
+      // Create user if doesn't exist
+      const newUser = new User({
+        telegramId: userId,
+        username: username || undefined,
+        firstName: firstName || undefined,
+        lastName: lastName || undefined,
+      })
+      await grantAdminPrivileges(newUser)
+      await newUser.save()
+      user = newUser
+    } else {
+      // Update username if changed and check admin privileges
+      let updated = false
+      if (username && user.username !== username) {
+        user.username = username
+        updated = true
+      }
+      const wasAdmin = user.isAdmin
+      await grantAdminPrivileges(user)
+      if (user.isAdmin !== wasAdmin || (user.isAdmin && user.plan !== 'premium')) {
+        updated = true
+      }
+      if (updated) {
+        await user.save()
+      }
     }
 
     // Use aggregation for efficient stats calculation
