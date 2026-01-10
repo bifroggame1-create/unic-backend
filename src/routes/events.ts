@@ -21,6 +21,46 @@ interface CreateEventBody {
 }
 
 export async function eventRoutes(fastify: FastifyInstance) {
+  // Get all public active events (discovery feed)
+  fastify.get('/events/public', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const events = await Event.find({
+        status: 'active',
+        endsAt: { $gt: new Date() }, // Only ongoing events
+      })
+        .select('_id channelId title duration activityType winnersCount startsAt endsAt participantsCount totalReactions totalComments prizes boostsEnabled')
+        .sort({ participantsCount: -1, startsAt: -1 }) // Popular first, then newest
+        .limit(50)
+        .lean()
+
+      // Calculate time remaining for each event
+      const eventsWithTimeRemaining = events.map(event => {
+        const now = new Date()
+        const endsAt = event.endsAt
+        let timeRemaining = null
+
+        if (endsAt) {
+          const diff = endsAt.getTime() - now.getTime()
+          if (diff > 0) {
+            const hours = Math.floor(diff / (1000 * 60 * 60))
+            const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
+            timeRemaining = { hours, minutes, totalMs: diff }
+          }
+        }
+
+        return {
+          ...event,
+          timeRemaining,
+        }
+      })
+
+      return { events: eventsWithTimeRemaining }
+    } catch (error) {
+      console.error('Error fetching public events:', error)
+      return reply.status(500).send({ error: 'Failed to fetch events' })
+    }
+  })
+
   // Get user's events
   fastify.get('/events', async (request: FastifyRequest, reply: FastifyReply) => {
     const telegramId = request.headers['x-telegram-id']
