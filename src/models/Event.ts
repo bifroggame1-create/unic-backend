@@ -4,7 +4,7 @@ export interface IEvent extends Document {
   channelId: number
   ownerId: number
   title?: string
-  status: 'draft' | 'pending_payment' | 'active' | 'completed' | 'cancelled'
+  status: 'draft' | 'pending_payment' | 'active' | 'completing' | 'completed' | 'cancelled'
   eventType: 'public' | 'premium'
   duration: '24h' | '48h' | '72h' | '7d'
   activityType: 'reactions' | 'comments' | 'all'
@@ -43,7 +43,7 @@ const EventSchema = new Schema<IEvent>({
   title: { type: String },
   status: {
     type: String,
-    enum: ['draft', 'pending_payment', 'active', 'completed', 'cancelled'],
+    enum: ['draft', 'pending_payment', 'active', 'completing', 'completed', 'cancelled'],
     default: 'draft'
   },
   eventType: {

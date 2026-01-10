@@ -118,6 +118,10 @@ export class SchedulerService {
         return
       }
 
+      // Mark as completing to prevent duplicate processing
+      event.status = 'completing'
+      await event.save()
+
       // Select winners using PointsService
       const winners = await PointsService.selectWinners(eventId)
 
@@ -177,6 +181,18 @@ export class SchedulerService {
 
     } catch (error) {
       console.error(`Failed to complete event ${eventId}:`, error)
+
+      // Rollback status to active on error
+      try {
+        const event = await Event.findById(eventId)
+        if (event && event.status === 'completing') {
+          event.status = 'active'
+          await event.save()
+          console.log(`⚠️ Event ${eventId} status rolled back to active due to error`)
+        }
+      } catch (rollbackError) {
+        console.error(`Failed to rollback event ${eventId}:`, rollbackError)
+      }
     }
   }
 
