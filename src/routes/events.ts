@@ -118,16 +118,22 @@ export async function eventRoutes(fastify: FastifyInstance) {
     const sanitizedTitle = title ? sanitizeString(title) : undefined
 
     // Verify user is channel admin
+    console.log(`🔍 Verifying user ${userId} is admin of channel ${channelId}`)
     const isAdmin = await verifyChannelAdmin(channelId, userId)
     if (!isAdmin) {
-      return sendError(reply, 403, ErrorMessages.NOT_CHANNEL_ADMIN)
+      console.log(`❌ User ${userId} is not admin of channel ${channelId}`)
+      return sendError(reply, 403, ErrorMessages.NOT_CHANNEL_ADMIN, `Вы должны быть администратором канала (ID: ${channelId})`)
     }
+    console.log(`✅ User ${userId} is admin of channel ${channelId}`)
 
     // Verify bot is admin in channel
+    console.log(`🔍 Verifying bot is admin of channel ${channelId}`)
     const botIsAdmin = await verifyBotAdmin(channelId)
     if (!botIsAdmin) {
-      return sendError(reply, 400, ErrorMessages.BAD_REQUEST, 'Please add the bot as admin to your channel with required permissions')
+      console.log(`❌ Bot is not admin of channel ${channelId}`)
+      return sendError(reply, 400, ErrorMessages.BAD_REQUEST, 'Пожалуйста, добавьте бота @rtyrtrebot как администратора в ваш канал с правами на чтение сообщений и управление сообщениями')
     }
+    console.log(`✅ Bot is admin of channel ${channelId}`)
 
     // Check user's plan limits
     const user = await User.findOne({ telegramId: userId })
