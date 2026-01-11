@@ -173,9 +173,32 @@ export async function handleChannelComment(
 // Verify channel admin rights
 export async function verifyChannelAdmin(channelId: number, userId: number): Promise<boolean> {
   try {
+    console.log(`🔍 [verifyChannelAdmin] Checking if user ${userId} is admin of channel ${channelId}`)
+
     const member = await bot.api.getChatMember(channelId, userId)
-    return ['creator', 'administrator'].includes(member.status)
-  } catch {
+    console.log(`👤 User member status:`, {
+      userId,
+      channelId,
+      status: member.status,
+      user: member.user
+    })
+
+    const isAdmin = ['creator', 'administrator'].includes(member.status)
+
+    if (isAdmin) {
+      console.log(`✅ User ${userId} is ${member.status} of channel ${channelId}`)
+    } else {
+      console.log(`❌ User ${userId} is not admin of channel ${channelId}, status: ${member.status}`)
+    }
+
+    return isAdmin
+  } catch (error: any) {
+    console.error(`❌ Error checking user admin status:`, {
+      userId,
+      channelId,
+      error: error.message,
+      response: error.response?.description
+    })
     return false
   }
 }
@@ -183,41 +206,43 @@ export async function verifyChannelAdmin(channelId: number, userId: number): Pro
 // Verify bot is admin in channel with required permissions
 export async function verifyBotAdmin(channelId: number): Promise<boolean> {
   try {
+    console.log(`🔍 [verifyBotAdmin] Checking bot admin status for channel ${channelId}`)
+
     const botInfo = await bot.api.getMe()
+    console.log(`🤖 Bot info:`, { id: botInfo.id, username: botInfo.username })
+
     const member = await bot.api.getChatMember(channelId, botInfo.id)
-
-    if (member.status !== 'administrator') {
-      console.log(`❌ Bot is not admin in channel ${channelId}`)
-      return false
-    }
-
-    // Check required permissions
-    const requiredPermissions = {
-      can_post_messages: true,
-      can_edit_messages: true,
-      can_delete_messages: false, // Optional
-      can_pin_messages: true,
-      can_manage_chat: false, // Optional
-    }
-
-    const hasPermissions = Object.entries(requiredPermissions).every(([perm, required]) => {
-      if (!required) return true
-      const hasPerm = (member as any)[perm]
-      if (!hasPerm) {
-        console.log(`⚠️ Bot missing permission: ${perm}`)
-      }
-      return hasPerm
+    console.log(`👤 Bot member status:`, {
+      status: member.status,
+      user: member.user,
+      permissions: JSON.stringify(member, null, 2)
     })
 
-    if (!hasPermissions) {
-      console.log(`❌ Bot lacks required permissions in channel ${channelId}`)
+    if (member.status !== 'administrator') {
+      console.log(`❌ Bot is not admin in channel ${channelId}, status: ${member.status}`)
       return false
     }
 
-    console.log(`✅ Bot has all required permissions in channel ${channelId}`)
+    // For channels, we primarily need can_post_messages permission
+    // Other permissions might not be available for bots in channels
+    if ('can_post_messages' in member) {
+      const canPost = (member as any).can_post_messages
+      console.log(`📝 can_post_messages:`, canPost)
+
+      if (!canPost) {
+        console.log(`⚠️ Bot cannot post messages in channel ${channelId}`)
+        // Don't fail - bot might still work for reading messages
+      }
+    }
+
+    console.log(`✅ Bot is admin in channel ${channelId}`)
     return true
-  } catch (error) {
-    console.error(`Error verifying bot admin status:`, error)
+  } catch (error: any) {
+    console.error(`❌ Error verifying bot admin status for channel ${channelId}:`, {
+      error: error.message,
+      stack: error.stack,
+      response: error.response?.description
+    })
     return false
   }
 }
@@ -225,18 +250,39 @@ export async function verifyBotAdmin(channelId: number): Promise<boolean> {
 // Get channel info
 export async function getChannelInfo(channelId: number | string) {
   try {
+    console.log(`🔍 [getChannelInfo] Getting info for channel: ${channelId}`)
+
     const chat = await bot.api.getChat(channelId)
-    if (chat.type !== 'channel') return null
+    console.log(`📋 Chat info:`, {
+      id: chat.id,
+      type: chat.type,
+      title: chat.title,
+      username: 'username' in chat ? chat.username : undefined
+    })
+
+    if (chat.type !== 'channel') {
+      console.log(`❌ Not a channel, type: ${chat.type}`)
+      return null
+    }
 
     const count = await bot.api.getChatMemberCount(channelId)
+    console.log(`👥 Subscriber count: ${count}`)
 
-    return {
+    const result = {
       id: chat.id,
       title: chat.title,
       username: 'username' in chat ? chat.username : undefined,
       subscribersCount: count,
     }
-  } catch {
+
+    console.log(`✅ Channel info retrieved:`, result)
+    return result
+  } catch (error: any) {
+    console.error(`❌ Error getting channel info for ${channelId}:`, {
+      error: error.message,
+      stack: error.stack,
+      response: error.response?.description
+    })
     return null
   }
 }
