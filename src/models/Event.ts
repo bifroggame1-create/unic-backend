@@ -16,10 +16,26 @@ export interface IEvent extends Document {
   totalReactions: number
   totalComments: number
   prizes: {
-    giftId: string
-    name: string
     position: number
+    type: 'telegram_gift' | 'ton' | 'custom'
+    // Telegram Gift fields
+    giftId?: string
+    name?: string
+    source?: 'pool' | 'on_demand'
+    poolReserved?: boolean
+    rarity?: 'common' | 'rare' | 'epic' | 'legendary'
+    limited?: boolean
+    remainingCount?: number
+    // TON fields
+    tonAmount?: number
+    // Custom fields
+    customReward?: {
+      name: string
+      description: string
+    }
+    // Display fields
     value?: number
+    status?: 'pending' | 'sent' | 'failed'
   }[]
   winners: {
     telegramId: number
@@ -69,10 +85,26 @@ const EventSchema = new Schema<IEvent>({
   totalReactions: { type: Number, default: 0 },
   totalComments: { type: Number, default: 0 },
   prizes: [{
+    position: { type: Number, required: true },
+    type: { type: String, enum: ['telegram_gift', 'ton', 'custom'], required: true },
+    // Telegram Gift fields
     giftId: { type: String },
     name: { type: String },
-    position: { type: Number },
-    value: { type: Number }
+    source: { type: String, enum: ['pool', 'on_demand'] },
+    poolReserved: { type: Boolean, default: false },
+    rarity: { type: String, enum: ['common', 'rare', 'epic', 'legendary'] },
+    limited: { type: Boolean },
+    remainingCount: { type: Number },
+    // TON fields
+    tonAmount: { type: Number, min: 0 },
+    // Custom fields
+    customReward: {
+      name: { type: String },
+      description: { type: String }
+    },
+    // Display fields
+    value: { type: Number },
+    status: { type: String, enum: ['pending', 'sent', 'failed'], default: 'pending' }
   }],
   winners: [{
     telegramId: { type: Number },

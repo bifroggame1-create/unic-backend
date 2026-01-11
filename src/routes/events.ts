@@ -1,21 +1,19 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
-import { Event, User, UserEventStats } from '../models'
+import { Event, User, UserEventStats, IEvent } from '../models'
 import { verifyChannelAdmin, verifyBotAdmin, sendEventPost } from '../services/telegram'
 import { PaymentService } from '../services/payment'
 import { validateEventId, isValidTelegramId, isValidChannelId, isValidDuration, isValidActivityType, isValidWinnersCount, sanitizeString, isValidObjectId } from '../utils/validation'
 import { sendError, ErrorMessages } from '../utils/errors'
+import { PrizeService } from '../services/prize'
+import { GiftPoolService } from '../services/giftPool'
+import { GiftsService } from '../services/gifts'
 
 interface CreateEventBody {
   channelId: number
   duration: '24h' | '48h' | '72h' | '7d'
   activityType: 'reactions' | 'comments' | 'all'
   winnersCount: number
-  prizes?: Array<{
-    giftId: string
-    name: string
-    position: number
-    value?: number
-  }>
+  prizes?: IEvent['prizes']
   packageId?: string
   title?: string
   boostsEnabled?: boolean
@@ -153,6 +151,24 @@ export async function eventRoutes(fastify: FastifyInstance) {
       const limit = limits[user.plan]
       if (limit !== -1 && user.eventsThisMonth >= limit) {
         return sendError(reply, 403, ErrorMessages.EVENT_LIMIT_REACHED)
+      }
+    }
+
+    // Validate prizes if provided
+    if (prizes && prizes.length > 0) {
+      const validation = await PrizeService.validatePrizeConfig(prizes, winnersCount)
+      if (!validation.valid) {
+        return reply.status(400).send({ error: 'Invalid prize configuration', details: validation.errors })
+      }
+
+      // Reserve pool gifts
+      for (const prize of prizes) {
+        if (prize.type === 'telegram_gift' && prize.source === 'pool' && prize.giftId) {
+          const reserved = await GiftPoolService.reserveGift(prize.giftId, 1)
+          if (!reserved) {
+            return reply.status(400).send({ error: `Failed to reserve gift ${prize.giftId} from pool. Insufficient quantity.` })
+          }
+        }
       }
     }
 
@@ -461,6 +477,51 @@ export async function eventRoutes(fastify: FastifyInstance) {
       }
 
       return reply.status(500).send({ error: 'Failed to join event' })
+    }
+  })
+
+  // Get gifts catalog with pool availability
+  fastify.get('/events/gifts/catalog', async (request: FastifyRequest, reply: FastifyReply) => {
+    const telegramId = request.headers['x-telegram-id']
+    if (!telegramId) {
+      return sendError(reply, 401, ErrorMessages.UNAUTHORIZED)
+    }
+
+    // Validate Telegram ID
+    const userId = Number(telegramId)
+    if (!isValidTelegramId(userId)) {
+      return sendError(reply, 401, ErrorMessages.INVALID_TELEGRAM_ID)
+    }
+
+    try {
+      // Get Telegram gifts and pool gifts in parallel
+      const [telegramGifts, poolGifts] = await Promise.all([
+        GiftsService.getAvailableGifts(),
+        GiftPoolService.getAllPoolGifts()
+      ])
+
+      // Enhance Telegram gifts with pool availability
+      const giftsWithPoolInfo = telegramGifts.map(gift => {
+        const poolGift = poolGifts.find(p => p.giftId === gift.id)
+
+        return {
+          id: gift.id,
+          name: gift.name,
+          stars: gift.starValue,
+          rarity: poolGift?.rarity || 'common',
+          limited: poolGift?.limited || false,
+          remainingCount: poolGift?.limited ? (poolGift.totalAvailable - poolGift.reserved - poolGift.used) : undefined,
+          convertStars: poolGift?.convertStars || gift.starValue,
+          requirePremium: poolGift?.requirePremium || false,
+          poolQuantity: poolGift ? (poolGift.totalAvailable - poolGift.reserved - poolGift.used) : 0,
+          available: gift.available
+        }
+      })
+
+      return { telegramGifts: giftsWithPoolInfo }
+    } catch (error: any) {
+      console.error('Error fetching gifts catalog:', error)
+      return reply.status(500).send({ error: 'Failed to fetch gifts catalog' })
     }
   })
 }

@@ -1,6 +1,7 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
 import { User, Event, UserEventStats } from '../models'
 import { grantAdminPrivileges } from '../middleware/admin'
+import { TONService } from '../services/ton'
 
 interface UpdateUserBody {
   username?: string
@@ -417,5 +418,55 @@ export async function userRoutes(fastify: FastifyInstance) {
     }
 
     return { avatarUrl }
+  })
+
+  // Save TON wallet address
+  fastify.post('/users/me/ton-wallet', async (request: FastifyRequest<{
+    Body: { address: string }
+  }>, reply: FastifyReply) => {
+    const telegramId = request.headers['x-telegram-id']
+    if (!telegramId) {
+      return sendError(reply, 401, ErrorMessages.UNAUTHORIZED)
+    }
+
+    const userId = Number(telegramId)
+    if (!isValidTelegramId(userId)) {
+      return sendError(reply, 401, ErrorMessages.INVALID_TELEGRAM_ID)
+    }
+
+    const { address } = request.body
+
+    // Validate input
+    if (!address || typeof address !== 'string') {
+      return reply.status(400).send({ error: 'TON wallet address is required' })
+    }
+
+    // Validate TON address format
+    if (!TONService.validateAddress(address)) {
+      return reply.status(400).send({ error: 'Invalid TON wallet address format' })
+    }
+
+    try {
+      const user = await User.findOneAndUpdate(
+        { telegramId: userId },
+        { tonWalletAddress: address },
+        { new: true }
+      )
+
+      if (!user) {
+        return sendError(reply, 404, ErrorMessages.USER_NOT_FOUND)
+      }
+
+      console.log(`✅ User ${userId} connected TON wallet: ${address}`)
+
+      return {
+        success: true,
+        message: 'TON wallet connected successfully',
+        tonWalletAddress: user.tonWalletAddress
+      }
+    } catch (error: any) {
+      console.error('Error saving TON wallet:', error)
+      return reply.status(500).send({ error: 'Failed to save TON wallet address' })
+    }
   })
 }

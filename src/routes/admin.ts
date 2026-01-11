@@ -1,6 +1,8 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
 import { User, Event } from '../models'
 import { isValidTelegramId, sanitizeString } from '../utils/validation'
+import { GiftPoolService } from '../services/giftPool'
+import { PrizeService } from '../services/prize'
 
 // Middleware to check if user is admin
 async function checkAdmin(request: FastifyRequest, reply: FastifyReply) {
@@ -143,6 +145,122 @@ export async function adminRoutes(fastify: FastifyInstance) {
       return { events }
     } catch (error: any) {
       return reply.status(500).send({ error: 'Failed to fetch events' })
+    }
+  })
+
+  // ========== Gift Pool Management Routes ==========
+
+  // Get gift pool stats and all gifts
+  fastify.get('/admin/gift-pool', async (request: FastifyRequest, reply: FastifyReply) => {
+    const adminCheck = await checkAdmin(request, reply)
+    if (adminCheck !== true) return adminCheck
+
+    try {
+      const [gifts, stats] = await Promise.all([
+        GiftPoolService.getAllPoolGifts(),
+        GiftPoolService.getPoolStats()
+      ])
+
+      return { gifts, stats }
+    } catch (error: any) {
+      console.error('Error fetching gift pool:', error)
+      return reply.status(500).send({ error: error.message || 'Failed to fetch gift pool' })
+    }
+  })
+
+  // Add gifts to pool
+  fastify.post('/admin/gift-pool/add', async (request: FastifyRequest<{
+    Body: { giftId: string; quantity: number }
+  }>, reply: FastifyReply) => {
+    const adminCheck = await checkAdmin(request, reply)
+    if (adminCheck !== true) return adminCheck
+
+    const { giftId, quantity } = request.body
+
+    // Validate input
+    if (!giftId || typeof giftId !== 'string') {
+      return reply.status(400).send({ error: 'Gift ID is required' })
+    }
+
+    if (!quantity || typeof quantity !== 'number' || quantity <= 0) {
+      return reply.status(400).send({ error: 'Quantity must be a positive number' })
+    }
+
+    try {
+      const gift = await GiftPoolService.addToPool(giftId, quantity)
+
+      console.log(`✅ Admin added ${quantity} of gift ${giftId} to pool`)
+      return {
+        success: true,
+        message: `Added ${quantity} gifts to pool`,
+        gift
+      }
+    } catch (error: any) {
+      console.error('Error adding gift to pool:', error)
+      return reply.status(500).send({ error: error.message || 'Failed to add gift to pool' })
+    }
+  })
+
+  // Sync gifts from Telegram API
+  fastify.post('/admin/gift-pool/sync', async (request: FastifyRequest, reply: FastifyReply) => {
+    const adminCheck = await checkAdmin(request, reply)
+    if (adminCheck !== true) return adminCheck
+
+    try {
+      await GiftPoolService.syncGiftsFromTelegram()
+
+      console.log('✅ Admin synced gifts from Telegram')
+      return {
+        success: true,
+        message: 'Successfully synced gifts from Telegram API'
+      }
+    } catch (error: any) {
+      console.error('Error syncing gifts:', error)
+      return reply.status(500).send({ error: error.message || 'Failed to sync gifts' })
+    }
+  })
+
+  // ========== Prize Distribution Management Routes ==========
+
+  // Get failed prize distributions
+  fastify.get('/admin/prizes/failed', async (request: FastifyRequest, reply: FastifyReply) => {
+    const adminCheck = await checkAdmin(request, reply)
+    if (adminCheck !== true) return adminCheck
+
+    try {
+      const failedPrizes = await PrizeService.getFailedPrizes()
+
+      return { prizes: failedPrizes }
+    } catch (error: any) {
+      console.error('Error fetching failed prizes:', error)
+      return reply.status(500).send({ error: error.message || 'Failed to fetch failed prizes' })
+    }
+  })
+
+  // Retry failed prize distribution
+  fastify.post('/admin/prizes/:id/retry', async (request: FastifyRequest<{
+    Params: { id: string }
+  }>, reply: FastifyReply) => {
+    const adminCheck = await checkAdmin(request, reply)
+    if (adminCheck !== true) return adminCheck
+
+    const { id } = request.params
+
+    try {
+      const success = await PrizeService.retryFailedPrize(id)
+
+      if (success) {
+        console.log(`✅ Admin retried prize distribution ${id}`)
+        return {
+          success: true,
+          message: 'Prize distribution retried successfully'
+        }
+      } else {
+        return reply.status(400).send({ error: 'Failed to retry prize (max attempts reached or already sent)' })
+      }
+    } catch (error: any) {
+      console.error('Error retrying prize:', error)
+      return reply.status(500).send({ error: error.message || 'Failed to retry prize' })
     }
   })
 }

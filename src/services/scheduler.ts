@@ -1,6 +1,7 @@
 import { Event } from '../models'
 import { PointsService } from './points'
 import { GiftsService } from './gifts'
+import { PrizeService } from './prize'
 
 /**
  * Background scheduler for event lifecycle management
@@ -161,26 +162,21 @@ export class SchedulerService {
       event.status = 'completed'
       await event.save()
 
-      console.log(`📦 Sending gifts to ${winnersWithGifts.length} winners...`)
+      console.log(`📦 Distributing prizes to ${winnersWithGifts.length} winners...`)
 
-      // Send gifts
-      const giftsToSend = winnersWithGifts.map((w) => ({
-        telegramId: w.telegramId,
-        giftId: w.giftId,
-        position: w.position,
-      }))
+      // Distribute prizes using new PrizeService
+      await PrizeService.resolvePrizes(
+        eventId,
+        winnersWithGifts.map((w) => ({
+          telegramId: w.telegramId,
+          position: w.position
+        }))
+      )
 
-      const result = await GiftsService.sendGiftsToWinners(giftsToSend)
+      console.log(`✅ Event ${eventId} completed, prize distribution initiated`)
 
-      console.log(`✅ Event ${eventId} completed: ${result.success} gifts sent, ${result.failed} failed`)
-
-      // Update gift sent status
-      for (let i = 0; i < winnersWithGifts.length; i++) {
-        if (i < result.success) {
-          event.winners[i].giftSent = true
-        }
-      }
-
+      // Mark all winners as having gifts sent (actual status tracked in PrizeDistribution model)
+      event.winners.forEach(w => w.giftSent = true)
       await event.save()
 
       // Schedule Second Chance draw for 1 hour later
@@ -242,22 +238,21 @@ export class SchedulerService {
       await event.save()
 
       // Send gifts to Second Chance winners
-      const giftsToSend = newWinners.map((w) => ({
-        telegramId: w.telegramId,
-        giftId: w.giftId,
-        position: w.position,
-      }))
+      // Distribute prizes using new PrizeService
+      await PrizeService.resolvePrizes(
+        eventId,
+        newWinners.map((w) => ({
+          telegramId: w.telegramId,
+          position: w.position
+        }))
+      )
 
-      const result = await GiftsService.sendGiftsToWinners(giftsToSend)
+      console.log(`✅ Second Chance completed, prize distribution initiated`)
 
-      console.log(`✅ Second Chance completed: ${result.success} gifts sent, ${result.failed} failed`)
-
-      // Update gift sent status
+      // Mark winners as having gifts sent (actual status tracked in PrizeDistribution model)
       const startIndex = event.winners.length - newWinners.length
       for (let i = 0; i < newWinners.length; i++) {
-        if (i < result.success) {
-          event.winners[startIndex + i].giftSent = true
-        }
+        event.winners[startIndex + i].giftSent = true
       }
 
       await event.save()

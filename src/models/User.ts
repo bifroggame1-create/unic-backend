@@ -15,6 +15,7 @@ export interface IUser extends Document {
   isAdmin?: boolean
   userRole: 'admin' | 'user' // admin = creates events, user = participates only
   hasUsedDemo: boolean // Track if demo event was used
+  tonWalletAddress?: string // TON wallet for receiving prizes
   createdAt: Date
   updatedAt: Date
 }
@@ -34,6 +35,7 @@ const UserSchema = new Schema<IUser>({
   isAdmin: { type: Boolean, default: false },
   userRole: { type: String, enum: ['admin', 'user'], default: 'user', index: true },
   hasUsedDemo: { type: Boolean, default: false },
+  tonWalletAddress: { type: String, index: true },
 }, { timestamps: true })
 
 // Index for admin queries and analytics
