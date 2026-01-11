@@ -2,6 +2,8 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
 import { User, Event, UserEventStats } from '../models'
 import { grantAdminPrivileges } from '../middleware/admin'
 import { TONService } from '../services/ton'
+import { isValidTelegramId } from '../utils/validation'
+import { sendError, ErrorMessages } from '../utils/errors'
 
 interface UpdateUserBody {
   username?: string
