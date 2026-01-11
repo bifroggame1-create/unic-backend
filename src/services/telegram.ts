@@ -400,3 +400,34 @@ export async function initBot() {
     console.log('✅ Bot started (polling)')
   }
 }
+
+/**
+ * Get user avatar URL from Telegram
+ * Returns the URL to the user's profile photo
+ */
+export async function getUserAvatarUrl(userId: number): Promise<string | null> {
+  try {
+    const photos = await bot.api.getUserProfilePhotos(userId, { limit: 1 })
+
+    if (photos.total_count === 0 || photos.photos.length === 0) {
+      return null
+    }
+
+    // Get the largest photo size (last in array)
+    const photo = photos.photos[0]
+    const largestPhoto = photo[photo.length - 1]
+
+    // Get file info to get file_path
+    const file = await bot.api.getFile(largestPhoto.file_id)
+
+    // Construct download URL
+    if (file.file_path) {
+      return `https://api.telegram.org/file/bot${BOT_TOKEN}/${file.file_path}`
+    }
+
+    return null
+  } catch (error) {
+    console.error(`Failed to get avatar for user ${userId}:`, error)
+    return null
+  }
+}

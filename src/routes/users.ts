@@ -400,4 +400,22 @@ export async function userRoutes(fastify: FastifyInstance) {
 
     return { success: true }
   })
+
+  // Get user avatar URL
+  fastify.get('/users/:userId/avatar', async (request: FastifyRequest<{ Params: { userId: string } }>, reply: FastifyReply) => {
+    const { getUserAvatarUrl } = await import('../services/telegram')
+    const userId = parseInt(request.params.userId)
+
+    if (isNaN(userId)) {
+      return reply.status(400).send({ error: 'Invalid user ID' })
+    }
+
+    const avatarUrl = await getUserAvatarUrl(userId)
+
+    if (!avatarUrl) {
+      return reply.status(404).send({ error: 'No avatar found' })
+    }
+
+    return { avatarUrl }
+  })
 }

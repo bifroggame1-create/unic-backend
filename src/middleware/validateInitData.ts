@@ -103,13 +103,8 @@ export async function validateInitData(
       try {
         const user = JSON.parse(userJson)
 
-        // Validate that user ID matches the header
-        const headerUserId = request.headers['x-telegram-id']
-        if (headerUserId && parseInt(headerUserId as string) !== user.id) {
-          return sendError(reply, 401, ErrorMessages.INVALID_INIT_DATA, 'User ID mismatch')
-        }
-
         // Attach validated user to request for use in handlers
+        // initData is the source of truth for user identity (prevents ID spoofing)
         ;(request as any).telegramUser = user
       } catch (error) {
         return sendError(reply, 401, ErrorMessages.INVALID_INIT_DATA, 'Invalid user data')
