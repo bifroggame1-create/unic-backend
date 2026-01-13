@@ -12,6 +12,7 @@ export interface IUser extends Document {
   referralCode: string
   referredBy?: string
   referralsCount: number
+  starsBalance: number // Stars earned from referrals
   isAdmin?: boolean
   userRole: 'admin' | 'user' // admin = creates events, user = participates only
   hasUsedDemo: boolean // Track if demo event was used
@@ -32,6 +33,7 @@ const UserSchema = new Schema<IUser>({
   referralCode: { type: String, unique: true, index: true },
   referredBy: { type: String, index: true },
   referralsCount: { type: Number, default: 0 },
+  starsBalance: { type: Number, default: 0 },
   isAdmin: { type: Boolean, default: false },
   userRole: { type: String, enum: ['admin', 'user'], default: 'user', index: true },
   hasUsedDemo: { type: Boolean, default: false },

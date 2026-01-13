@@ -123,6 +123,14 @@ export async function handleChannelComment(
   messageId?: number
 ) {
   const { ProcessedActivity } = await import('../models')
+  const { checkRateLimit } = await import('../middleware/rateLimit')
+
+  // Rate limiting: 10 comments per hour
+  const rateLimit = checkRateLimit(userId, 'comments')
+  if (!rateLimit.allowed) {
+    console.log(`⚠️ Rate limit exceeded for user ${userId}: comments (reset in ${Math.ceil(rateLimit.resetIn / 60000)} min)`)
+    return null
+  }
 
   // Check if already processed (deduplication)
   if (messageId) {

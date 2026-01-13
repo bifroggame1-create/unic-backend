@@ -93,6 +93,14 @@ export async function eventRoutes(fastify: FastifyInstance) {
       return sendError(reply, 401, ErrorMessages.INVALID_TELEGRAM_ID)
     }
 
+    // Rate limiting: 5 events per day
+    const { checkRateLimit } = await import('../middleware/rateLimit')
+    const rateLimit = checkRateLimit(userId, 'events')
+    if (!rateLimit.allowed) {
+      const resetHours = Math.ceil(rateLimit.resetIn / (60 * 60 * 1000))
+      return sendError(reply, 429, `Rate limit exceeded. You can create more events in ${resetHours} hours.`)
+    }
+
     const { channelId, duration, activityType, winnersCount, prizes, packageId, title, boostsEnabled } = request.body
 
     // Validate required fields

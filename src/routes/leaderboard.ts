@@ -95,6 +95,10 @@ export async function leaderboardRoutes(fastify: FastifyInstance) {
       offset?: string
     }
 
+    // Get user ID from header for position lookup
+    const telegramId = request.headers['x-telegram-id']
+    const userId = telegramId ? Number(telegramId) : null
+
     // Validate event ID
     const validation = validateEventId(id)
     if (!validation.valid) {
@@ -140,8 +144,21 @@ export async function leaderboardRoutes(fastify: FastifyInstance) {
         eventId: new Types.ObjectId(id),
       })
 
+      // Get current user's position if authenticated
+      let userPosition = null
+      if (userId && isValidTelegramId(userId)) {
+        userPosition = await PointsService.getUserPosition(userId, id)
+      }
+
       return reply.send({
+        event: {
+          id: event._id,
+          status: event.status,
+          winnersCount: event.winnersCount,
+        },
         leaderboard: enriched,
+        totalParticipants,
+        userPosition,
         pagination: {
           total: totalParticipants,
           limit: validLimit,

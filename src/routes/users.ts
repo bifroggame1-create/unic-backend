@@ -392,16 +392,28 @@ export async function userRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: 'Cannot use your own referral code' })
     }
 
+    // Referral reward: 50 Stars to referrer
+    const REFERRAL_BONUS_STARS = 50
+
     // Apply referral
     user.referredBy = code
     await user.save()
 
-    // Update referrer
+    // Update referrer: increment count and add Stars bonus
     await User.findByIdAndUpdate(referrer._id, {
-      $inc: { referralsCount: 1 },
+      $inc: {
+        referralsCount: 1,
+        starsBalance: REFERRAL_BONUS_STARS
+      },
     })
 
-    return { success: true }
+    console.log(`✅ Referral applied: ${user.telegramId} → ${referrer.telegramId} (+${REFERRAL_BONUS_STARS} Stars)`)
+
+    return {
+      success: true,
+      referrerBonus: REFERRAL_BONUS_STARS,
+      message: `Referral code applied! ${referrer.username || referrer.firstName || 'User'} earned ${REFERRAL_BONUS_STARS} Stars.`
+    }
   })
 
   // Get user avatar URL
